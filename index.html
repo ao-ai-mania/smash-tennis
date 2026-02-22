@@ -975,27 +975,22 @@
     //  CONTROLLER INPUT
     // ============================================================
     function onControllerData(data) {
-      if (data.type === 'trigger_swing_sound') {
-        playSwing();
-      }
+      if (data.type === 'trigger_swing_sound') playSwing();
       if (data.type === 'swing' && GS.running && ball.visible) {
         handleSwing(data.power || 0.75);
       }
-      // Phone tilt → PC racket moves
+      // Phone tilt → PC racket tilts ONLY (no camera parallax – prevents motion sickness)
       if (data.type === 'tilt') {
         racketTiltX = data.x || 0;
         racketTiltY = data.y || 0;
-        // Camera parallax
-        camX = racketTiltX * 18;
-        camY = racketTiltY * 10;
+        // camX/camY no longer updated from tilt
       }
-      // Movement buttons
+      // Touch-zone movement (left/right half, scroll for depth)
       if (data.type === 'move') {
-        const step = 0.04;
-        if (data.dir === 'left') camX = Math.max(camX - 30, -80);
-        if (data.dir === 'right') camX = Math.min(camX + 30, 80);
-        if (data.dir === 'up') camY = Math.max(camY - 20, -50);
-        if (data.dir === 'down') camY = Math.min(camY + 20, 50);
+        if (data.dir === 'left') camX = Math.max(camX - 28, -90);
+        if (data.dir === 'right') camX = Math.min(camX + 28, 90);
+        if (data.dir === 'fwd') camY = Math.max(camY - 20, -60);
+        if (data.dir === 'back') camY = Math.min(camY + 20, 60);
       }
     }
 
@@ -1006,7 +1001,7 @@
       if (!ball.visible || ball.phase !== 'incoming') return;
       if (swingReceived) return;
 
-      if (ball.z > 0.52) {
+      if (ball.z > 0.50) {
         swingReceived = true;
         const bonus = Math.floor(power * 30);
         GS.score += 10 + bonus + GS.streak * 5;
@@ -1014,12 +1009,23 @@
         GS.rallyCount++;
         if (GS.rallyCount > GS.bestRally) GS.bestRally = GS.rallyCount;
 
-        // Ball goes back — negate z velocity and give random lateral drift
+        // Send ball back
         ball.phase = 'outgoing';
-        const speed = Math.abs(ball.vz) * (1.04 + power * 0.06);
-        ball.vz = -Math.min(speed, 0.03);
-        ball.vx = (Math.random() - 0.5) * 0.003;  // slight left/right drift
+        ball.vz = -(0.010 + power * 0.012);   // always strong enough to cross the net
+        ball.vx = (Math.random() - 0.5) * 0.003;
         ball.spinV = (Math.random() > 0.5 ? 1 : -1) * (0.08 + power * 0.06);
+        ball.bounceT = 0;
+
+        // Wall mode: instant reflect
+        if (currentMode === 'wall') {
+          setTimeout(() => {
+            if (GS.running) {
+              ball.phase = 'incoming';
+              ball.vz = Math.abs(ball.vz);
+              swingReceived = false;
+            }
+          }, 250);
+        }
 
         playHit();
         spawnParticles(ball.x * C.width, ball.y * C.height);
@@ -1030,7 +1036,7 @@
         if (conn) conn.send({ type: 'result', result: 'hit', score: GS.score });
         if (GS.streak % 5 === 0) setTimeout(playCheer, 300);
 
-      } else if (ball.z > 0.2) {
+      } else if (ball.z > 0.18) {
         showMsg('早い！', '#aaa');
       }
     }
@@ -1432,67 +1438,56 @@
       rctx.clearRect(0, 0, RC.width, RC.height);
       const W = RC.width, H = RC.height;
 
-      // Tilt the racket based on phone orientation
-      const tiltAngle = racketTiltX * 0.04;           // left-right tilt
-      const tiltRaise = racketTiltY * 2;              // forward/back = raise/lower
-      const cx = W * 0.5 + racketTiltX * 6;
-      const cy = H - 8 + tiltRaise * 0.5;
+      if (!drawRacketPanel._img) {
+        drawRacketPanel._img = new Image();
+        drawRacketPanel._img.src = 'racket.png';
+      }
+      const img = drawRacketPanel._img;
+
+      const tiltAngle = racketTiltX * 0.035;
+      const tiltRise = racketTiltY * 1.8;
+      const cx = W * 0.5 + racketTiltX * 7;
+      const baseY = H + 40 + tiltRise;
 
       rctx.save();
-      rctx.translate(cx, cy);
+      rctx.translate(cx, baseY);
       rctx.rotate(tiltAngle);
 
-      // Handle
-      rctx.strokeStyle = '#5a3010'; rctx.lineWidth = 10; rctx.lineCap = 'round';
-      rctx.beginPath();
-      rctx.moveTo(0, -8);
-      rctx.lineTo(0, -65);
-      rctx.stroke();
-
-      // Frame glow when active
-      if (sweetZoneActive) {
-        rctx.shadowColor = '#f5c842'; rctx.shadowBlur = 22;
-        rctx.strokeStyle = '#f5c842'; rctx.lineWidth = 4;
+      const rW = 260, rH = 320;
+      if (img.complete && img.naturalWidth > 0) {
+        rctx.drawImage(img, -rW / 2, -rH, rW, rH);
       } else {
-        rctx.strokeStyle = 'rgba(255,255,255,0.75)'; rctx.lineWidth = 3; rctx.shadowBlur = 0;
+        rctx.strokeStyle = 'rgba(255,255,255,0.6)'; rctx.lineWidth = 3;
+        rctx.beginPath(); rctx.ellipse(0, -110, 40, 55, 0, 0, Math.PI * 2); rctx.stroke();
+        rctx.strokeStyle = '#5a3010'; rctx.lineWidth = 10;
+        rctx.beginPath(); rctx.moveTo(0, -60); rctx.lineTo(0, 10); rctx.stroke();
       }
-      rctx.beginPath();
-      rctx.ellipse(0, -110, 40, 55, 0, 0, Math.PI * 2);
-      rctx.stroke();
-      rctx.shadowBlur = 0;
 
-      // Strings
-      rctx.strokeStyle = sweetZoneActive ? 'rgba(245,200,66,0.5)' : 'rgba(255,255,255,0.18)';
-      rctx.lineWidth = 0.8;
-      for (let i = -4; i <= 4; i++) {
-        rctx.beginPath();
-        rctx.moveTo(i * 9, -165);
-        rctx.lineTo(i * 9, -55);
-        rctx.stroke();
-      }
-      for (let i = -5; i <= 5; i++) {
-        rctx.beginPath();
-        rctx.moveTo(-38, -110 + i * 10);
-        rctx.lineTo(38, -110 + i * 10);
-        rctx.stroke();
+      if (sweetZoneActive) {
+        rctx.globalAlpha = 0.4 + Math.sin(Date.now() * 0.015) * 0.2;
+        rctx.fillStyle = 'rgba(245,200,66,0.35)';
+        rctx.beginPath(); rctx.ellipse(0, -190, 70, 90, 0, 0, Math.PI * 2); rctx.fill();
+        rctx.shadowColor = '#f5c842'; rctx.shadowBlur = 30;
+        rctx.strokeStyle = '#f5c842'; rctx.lineWidth = 3;
+        rctx.beginPath(); rctx.ellipse(0, -190, 70, 90, 0, 0, Math.PI * 2); rctx.stroke();
+        rctx.shadowBlur = 0; rctx.globalAlpha = 1;
       }
 
       rctx.restore();
 
-      // Prompt overlay – not rotated
       if (sweetZoneActive) {
-        rctx.font = 'bold 14px Orbitron, monospace';
+        rctx.font = 'bold 15px Orbitron, monospace';
         rctx.fillStyle = '#f5c842';
-        rctx.globalAlpha = 0.7 + Math.sin(Date.now() * 0.012) * 0.3;
+        rctx.globalAlpha = 0.75 + Math.sin(Date.now() * 0.012) * 0.25;
         rctx.textAlign = 'center';
-        rctx.fillText('▲ 今！排って！ ▲', W * 0.5, 22);
+        rctx.fillText('\u25b2 \u4eca\uff01\u6392\u3063\u3066\uff01 \u25b2', W * 0.5, 24);
         rctx.globalAlpha = 1;
       }
 
       rctx.font = '11px Noto Sans JP, sans-serif';
-      rctx.fillStyle = 'rgba(255,255,255,0.25)';
+      rctx.fillStyle = 'rgba(255,255,255,0.22)';
       rctx.textAlign = 'right';
-      rctx.fillText('SPACE / ↑ でも打てます', W - 16, H - 12);
+      rctx.fillText('SPACE / \u2191 \u3067\u3082\u6253\u3066\u307e\u3059', W - 16, H - 10);
     }
 
     // ============================================================

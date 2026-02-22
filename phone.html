@@ -545,30 +545,26 @@
       </div>
     </div>
 
-    <!-- D-PAD MOVEMENT BUTTONS -->
-    <div id="dpad" style="
-      position: absolute;
-      bottom: 20px; left: 50%; transform: translateX(-50%);
-      display: grid;
-      grid-template-columns: 44px 44px 44px;
-      grid-template-rows: 44px 44px 44px;
-      gap: 4px; z-index: 20;
-    ">
-      <div></div>
-      <button class="dpad-btn" ontouchstart="sendMove('up')" onclick="sendMove('up')"
-        style="grid-column:2;grid-row:1">▲</button>
-      <div></div>
-      <button class="dpad-btn" ontouchstart="sendMove('left')" onclick="sendMove('left')"
-        style="grid-column:1;grid-row:2">◀</button>
-      <div style="background:rgba(255,255,255,0.06);border-radius:50%;width:44px;height:44px;grid-column:2;grid-row:2;">
-      </div>
-      <button class="dpad-btn" ontouchstart="sendMove('right')" onclick="sendMove('right')"
-        style="grid-column:3;grid-row:2">▶</button>
-      <div></div>
-      <button class="dpad-btn" ontouchstart="sendMove('down')" onclick="sendMove('down')"
-        style="grid-column:2;grid-row:3">▼</button>
-      <div></div>
+    <!-- TOUCH ZONES: left half / right half for movement -->
+    <div id="touch-zone-left" style="position:absolute;left:0;top:0;width:50%;height:100%;z-index:18;opacity:0;"
+      ontouchstart="touchZonePress('left',event)" onclick="sendMove('left')">
     </div>
+    <div id="touch-zone-right" style="position:absolute;right:0;top:0;width:50%;height:100%;z-index:18;opacity:0;"
+      ontouchstart="touchZonePress('right',event)" onclick="sendMove('right')">
+    </div>
+
+    <!-- Scroll zone overlaid for fwd/back (transparent but captures wheel) -->
+    <div id="scroll-zone" style="position:absolute;inset:0;z-index:17;" onwheel="onScrollMove(event)">
+    </div>
+
+    <!-- Visual hint arrows (bottom corners) -->
+    <div style="position:absolute;bottom:30px;left:14px;z-index:20;font-size:1.1rem;opacity:0.35;pointer-events:none;">◀
+      左</div>
+    <div style="position:absolute;bottom:30px;right:14px;z-index:20;font-size:1.1rem;opacity:0.35;pointer-events:none;">
+      右 ▶</div>
+    <div
+      style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:20;font-size:0.6rem;opacity:0.25;pointer-events:none;white-space:nowrap;">
+      スクロール↕ = 前後移動</div>
 
     <div id="tilt-indicator">
       <div class="tilt-label">TILT</div>
@@ -749,6 +745,21 @@
 
     function sendMove(dir) {
       if (conn && conn.open) conn.send({ type: 'move', dir });
+    }
+
+    // Touch zones: press left half = move left, right half = move right
+    function touchZonePress(side, e) {
+      // Don't trigger when tapping the swing button
+      if (e.target.id === 'swing-btn' || e.target.closest('#swing-btn')) return;
+      e.stopPropagation();
+      sendMove(side);
+    }
+
+    // Scroll (or two-finger swipe) = move forward / backward
+    function onScrollMove(e) {
+      e.preventDefault();
+      if (e.deltaY < -5) sendMove('fwd');
+      else if (e.deltaY > 5) sendMove('back');
     }
 
     function doSwing(power) {
