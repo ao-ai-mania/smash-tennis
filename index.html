@@ -610,54 +610,45 @@
   </div>
 
   <script>
-    // ====== SOUND SYNTHESIZER ======
-    let audioCtx;
-    function initAudio() {
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-    }
+    // ====== SOUND ASSETS ======
+    const sfx_hit1 = new Audio('sounds_racket1.mp3');
+    const sfx_hit2 = new Audio('sounds_racket2.mp3');
+    const sfx_swing = new Audio('sounds_swing.mp3');
 
     function playSound(type) {
-      if (!audioCtx) return;
-      const t = audioCtx.currentTime;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-
       if (type === 'hit') {
-        // Sharp high pitch
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(600, t);
-        osc.frequency.exponentialRampToValueAtTime(300, t + 0.1);
-        gain.gain.setValueAtTime(0.3, t);
-        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
-        osc.start(t);
-        osc.stop(t + 0.1);
+        const h = Math.random() > 0.5 ? sfx_hit1 : sfx_hit2;
+        h.currentTime = 0;
+        h.play().catch(() => { });
+      } else if (type === 'swing') {
+        sfx_swing.currentTime = 0;
+        sfx_swing.play().catch(() => { });
       } else if (type === 'miss') {
-        // Low buzzer
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(150, t);
-        osc.frequency.exponentialRampToValueAtTime(50, t + 0.4);
-        gain.gain.setValueAtTime(0.3, t);
-        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4);
-        osc.start(t);
-        osc.stop(t + 0.4);
+        // Fallback or keep short synth for miss since it's gamey
+        try {
+          const t = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(150, t);
+          osc.frequency.exponentialRampToValueAtTime(50, t + 0.4);
+          gain.gain.setValueAtTime(0.3, t);
+          gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4);
+          osc.start(t);
+          osc.stop(t + 0.4);
+        } catch (e) { }
       } else if (type === 'serve') {
-        // Soft pop
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(400, t);
-        osc.frequency.exponentialRampToValueAtTime(200, t + 0.05);
-        gain.gain.setValueAtTime(0.2, t);
-        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.05);
-        osc.start(t);
-        osc.stop(t + 0.05);
-      } else if (type === 'bgm') {
-        // A short ambient drone or crowd murmur simulation could go here
-        // For now, keeping it simple as we only need event-based sound mostly.
+        playSound('swing');
       }
     }
+
+    // ====== IMAGE ASSETS ======
+    const img_bg = new Image();
+    img_bg.src = 'japan_bg.png';
+    const img_ball = new Image();
+    img_ball.src = 'tennis_ball.png';
 
     // ====== PEER SETUP ======
     let peer, conn;
@@ -837,6 +828,9 @@
     }
 
     function onControllerData(data) {
+      if (data.type === 'trigger_swing_sound') {
+        playSound('swing');
+      }
       if (data.type === 'swing' && gs.running && ball.visible) {
         handleSwing(data.power || 0.75);
       }
@@ -1001,27 +995,40 @@
         }
 
         // Ball
-        const bg = ctx.createRadialGradient(bx - bs * 0.3, by - bs * 0.3, 0, bx, by, bs);
-        bg.addColorStop(0, '#fffff0');
-        bg.addColorStop(0.35, '#e8d44d');
-        bg.addColorStop(1, '#b89800');
-        ctx.beginPath();
-        ctx.arc(bx, by, bs, 0, Math.PI * 2);
-        ctx.fillStyle = bg;
-        ctx.fill();
+        if (currentTheme === 'japan' && img_ball.complete) {
+          // Draw image
+          ctx.save();
+          // Use green screen chroma-key trick if necessary, or just clip. 
+          // Best is to assume a rounded clip since we know tennis balls are round.
+          ctx.beginPath();
+          ctx.arc(bx, by, bs, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(img_ball, bx - bs, by - bs, bs * 2, bs * 2);
+          ctx.restore();
+        } else {
+          // Fallback drawn ball
+          const bg = ctx.createRadialGradient(bx - bs * 0.3, by - bs * 0.3, 0, bx, by, bs);
+          bg.addColorStop(0, '#fffff0');
+          bg.addColorStop(0.35, '#e8d44d');
+          bg.addColorStop(1, '#b89800');
+          ctx.beginPath();
+          ctx.arc(bx, by, bs, 0, Math.PI * 2);
+          ctx.fillStyle = bg;
+          ctx.fill();
 
-        // Seam
-        ctx.save();
-        ctx.globalAlpha = 0.25;
-        ctx.strokeStyle = '#806000';
-        ctx.lineWidth = bs * 0.12;
-        ctx.beginPath();
-        ctx.arc(bx, by, bs * 0.72, 0.4, Math.PI + 0.4);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(bx, by, bs * 0.72, Math.PI + 0.4, 0.4 + Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
+          // Seam
+          ctx.save();
+          ctx.globalAlpha = 0.25;
+          ctx.strokeStyle = '#806000';
+          ctx.lineWidth = bs * 0.12;
+          ctx.beginPath();
+          ctx.arc(bx, by, bs * 0.72, 0.4, Math.PI + 0.4);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(bx, by, bs * 0.72, Math.PI + 0.4, 0.4 + Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
 
         // Hit ring indicator
         if (ball.phase === 'incoming' && ball.z > 0.5) {
@@ -1143,42 +1150,83 @@
       ctx.fillRect(0, hY - 40, W, 70);
 
       if (currentTheme === 'japan') {
-        const fpX = W * 0.5;
-        const fpY = hY;
-        ctx.save();
-        // Mt Fuji
-        ctx.fillStyle = '#14142f';
-        ctx.beginPath();
-        ctx.moveTo(fpX - W * 0.25, fpY);
-        ctx.lineTo(fpX, fpY - H * 0.20);
-        ctx.lineTo(fpX + W * 0.25, fpY);
-        ctx.fill();
-        // Snow cap
-        ctx.fillStyle = '#eef3f8';
-        ctx.beginPath();
-        ctx.moveTo(fpX - W * 0.08, fpY - H * 0.136);
-        ctx.lineTo(fpX, fpY - H * 0.20);
-        ctx.lineTo(fpX + W * 0.08, fpY - H * 0.136);
-        ctx.fill();
+        // Draw photorealistic japan sunset layer
+        if (img_bg.complete) {
+          ctx.drawImage(img_bg, 0, 0, W, H);
+        }
+      } else {
+        // Court
+        const cg = ctx.createLinearGradient(0, H * 0.5, 0, H);
+        cg.addColorStop(0, t.courtTop);
+        cg.addColorStop(0.5, t.courtMid);
+        cg.addColorStop(1, t.courtBot);
+        ctx.fillStyle = cg;
+        ctx.fillRect(0, H * 0.5, W, H * 0.5);
 
-        // Torii gate silhouette
-        ctx.strokeStyle = '#8b0000';
-        ctx.lineWidth = 14;
-        ctx.lineCap = 'round';
-        const tx = W * 0.85;
+        // Court grid lines with perspective
+        const vp = { x: W * 0.5, y: H * 0.5 };
+        ctx.save();
+
+        // Sidelines
+        ctx.strokeStyle = t.lines;
+        ctx.lineWidth = 1.5;
+        [[0.04, 0.96], [0.1, 0.9], [0.2, 0.8]].forEach(([l, r]) => {
+          ctx.beginPath();
+          ctx.moveTo(vp.x, vp.y);
+          ctx.lineTo(W * l, H);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(vp.x, vp.y);
+          ctx.lineTo(W * r, H);
+          ctx.stroke();
+        });
+
+        // Horizontal lines
+        for (let d = 0; d < 10; d++) {
+          const t_line = (d + 1) / 11;
+          const y = vp.y + (H - vp.y) * (t_line * t_line * 0.9 + t_line * 0.1);
+          const spread = W * 0.46 * t_line;
+          ctx.globalAlpha = 0.08 + t_line * 0.14;
+          ctx.beginPath();
+          ctx.moveTo(vp.x - spread, y);
+          ctx.lineTo(vp.x + spread, y);
+          ctx.stroke();
+        }
+
+        // Center
+        ctx.globalAlpha = 0.15;
         ctx.beginPath();
-        ctx.moveTo(tx - 40, fpY - 80); ctx.lineTo(tx + 40, fpY - 80); // top rail
+        ctx.moveTo(vp.x, vp.y);
+        ctx.lineTo(vp.x, H);
         ctx.stroke();
-        ctx.lineWidth = 10;
+
+        // Net
+        ctx.globalAlpha = 1;
+        const netY = H * 0.63;
+        const netW = W * 0.3;
+
+        // Net shadow
+        ctx.shadowColor = t.netGlow;
+        ctx.shadowBlur = 12;
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.moveTo(tx - 30, fpY - 65); ctx.lineTo(tx + 30, fpY - 65); // lower rail
+        ctx.moveTo(vp.x - netW, netY);
+        ctx.lineTo(vp.x + netW, netY);
         ctx.stroke();
-        ctx.lineWidth = 12;
-        ctx.lineCap = 'butt';
-        ctx.beginPath();
-        ctx.moveTo(tx - 20, fpY); ctx.lineTo(tx - 20, fpY - 90); // left post
-        ctx.moveTo(tx + 20, fpY); ctx.lineTo(tx + 20, fpY - 90); // right post
-        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Net mesh
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = 0.5;
+        const nH = 20;
+        for (let i = 0; i <= 18; i++) {
+          const nx = vp.x - netW + (netW * 2) * (i / 18);
+          ctx.beginPath(); ctx.moveTo(nx, netY); ctx.lineTo(nx, netY + nH); ctx.stroke();
+        }
+        for (let i = 0; i <= 3; i++) {
+          ctx.beginPath(); ctx.moveTo(vp.x - netW, netY + nH * i / 3); ctx.lineTo(vp.x + netW, netY + nH * i / 3); ctx.stroke();
+        }
         ctx.restore();
       }
 
