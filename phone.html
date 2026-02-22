@@ -443,6 +443,31 @@
       border-color: var(--gold);
     }
 
+    /* Phone mode selector buttons */
+    .mode-btn {
+      padding: 10px 8px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: rgba(255, 255, 255, 0.75);
+      border-radius: 8px;
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .mode-btn.active {
+      background: rgba(245, 200, 66, 0.18);
+      border-color: var(--gold);
+      color: var(--gold);
+      font-weight: 700;
+    }
+
+    .mode-btn:active {
+      transform: scale(0.96);
+    }
+
     .tilt-label {
       font-family: 'Orbitron', monospace;
       font-size: 0.45rem;
@@ -501,16 +526,29 @@
       <div class="swing-status" id="test-status">スマホを振ってみてください</div>
     </div>
 
+    <!-- MODE SELECTION -->
+    <div style="width:100%;max-width:320px;">
+      <div
+        style="font-family:'Orbitron',monospace;font-size:0.55rem;letter-spacing:0.3em;color:rgba(255,255,255,0.35);text-align:center;margin-bottom:8px;">
+        GAME MODE</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="mode-grid-phone">
+        <button class="mode-btn active" id="pb-rally" onclick="phoneSelectMode('rally')">🎾 ラリー</button>
+        <button class="mode-btn" id="pb-match" onclick="phoneSelectMode('match')">🏆 試合</button>
+        <button class="mode-btn" id="pb-lesson" onclick="phoneSelectMode('lesson')">📚 レッスン</button>
+        <button class="mode-btn" id="pb-wall" onclick="phoneSelectMode('wall')">🧱 壁打ち</button>
+      </div>
+    </div>
+
     <button class="perm-btn" id="perm-btn" style="display:none" onclick="reqPermission()">
       📡 センサーを有効化 (iOS)
     </button>
 
     <button class="test-ok-btn" onclick="goToPlay()">
-      ✓ テスト完了 → プレイへ
+      ▶ プレイ開始
     </button>
 
     <div style="font-size:0.65rem;color:rgba(255,255,255,0.25);text-align:center;">
-      ボタンでタップしてもプレイできます
+      タップでも振りを代用できます
     </div>
   </div>
 
@@ -813,16 +851,66 @@
     // ============================================================
     //  NAVIGATION
     // ============================================================
+    // ============================================================
+    //  NAVIGATION & MODE
+    // ============================================================
+    let selectedMode = 'rally';
+
+    function phoneSelectMode(mode) {
+      selectedMode = mode;
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      const el = document.getElementById('pb-' + mode);
+      if (el) el.classList.add('active');
+      // Notify PC immediately (even before play starts)
+      if (conn && conn.open) conn.send({ type: 'select_mode', mode });
+    }
+
     function goToPlay() {
+      // Send mode to PC before switching to play screen
+      if (conn && conn.open) conn.send({ type: 'select_mode', mode: selectedMode });
       document.getElementById('screen-test').classList.remove('active');
       document.getElementById('screen-play').classList.add('active');
+      setupSwipeZone();
     }
 
     function quitPlay() {
-      // Tell PC to return to lobby, then show test screen
       if (conn && conn.open) conn.send({ type: 'quit_game' });
       document.getElementById('screen-play').classList.remove('active');
       document.getElementById('screen-test').classList.add('active');
+    }
+
+    // ============================================================
+    //  SWIPE GESTURE CONTROLS (play screen)
+    // ============================================================
+    function setupSwipeZone() {
+      const zone = document.getElementById('screen-play');
+      let touchStartX = 0, touchStartY = 0;
+      let lastSwipeTime = 0;
+
+      zone.addEventListener('touchstart', e => {
+        const t = e.touches[0];
+        touchStartX = t.clientX;
+        touchStartY = t.clientY;
+      }, { passive: true });
+
+      zone.addEventListener('touchend', e => {
+        const t = e.changedTouches[0];
+        const dx = t.clientX - touchStartX;
+        const dy = t.clientY - touchStartY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const now = Date.now();
+        if (now - lastSwipeTime < 200) return; // debounce
+        if (dist < 25) return; // too small
+        lastSwipeTime = now;
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+          // Horizontal swipe
+          sendMove(dx > 0 ? 'right' : 'left');
+        } else {
+          // Vertical swipe
+          sendMove(dy > 0 ? 'back' : 'fwd');
+        }
+      }, { passive: true });
     }
 
     // ============================================================

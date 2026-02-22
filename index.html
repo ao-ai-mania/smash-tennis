@@ -890,8 +890,10 @@
     }
 
     // Camera / phone tilt state
-    let camX = 0, camY = 0;     // parallax offset (pixels)
-    let racketTiltX = 0, racketTiltY = 0;  // from phone orientation
+    let camX = 0;           // horizontal slide offset (pixels)
+    let camZoom = 1.0;       // zoom level: >1 closer, <1 farther
+    let racketTiltX = 0, racketTiltY = 0;
+    const CAM_X_MAX = 120, CAM_ZOOM_MAX = 1.5, CAM_ZOOM_MIN = 0.6;
 
     // ============================================================
     //  GAME START
@@ -909,7 +911,7 @@
 
       function resize() {
         C.width = window.innerWidth; C.height = window.innerHeight;
-        RC.width = window.innerWidth; RC.height = 240;  // taller so racket head fits
+        RC.width = window.innerWidth; RC.height = 300;  // tall enough for full racket
       }
       resize();
       window.addEventListener('resize', resize);
@@ -980,21 +982,49 @@
       if (data.type === 'swing' && GS.running && ball.visible) {
         handleSwing(data.power || 0.75);
       }
-      // Phone tilt → PC racket tilts ONLY (no camera parallax – prevents motion sickness)
+      // Phone tilt → PC racket tilts ONLY
       if (data.type === 'tilt') {
         racketTiltX = data.x || 0;
         racketTiltY = data.y || 0;
-        // camX/camY no longer updated from tilt
       }
-      // Touch-zone movement (left/right half, scroll for depth)
+      // Touch-zone movement
       if (data.type === 'move') {
-        if (data.dir === 'left') camX = Math.max(camX - 28, -90);
-        if (data.dir === 'right') camX = Math.min(camX + 28, 90);
-        if (data.dir === 'fwd') camY = Math.max(camY - 20, -60);
-        if (data.dir === 'back') camY = Math.min(camY + 20, 60);
+        if (data.dir === 'left') camX = Math.max(camX - 32, -CAM_X_MAX);
+        if (data.dir === 'right') camX = Math.min(camX + 32, CAM_X_MAX);
+        if (data.dir === 'fwd') camZoom = Math.min(camZoom + 0.06, CAM_ZOOM_MAX);
+        if (data.dir === 'back') camZoom = Math.max(camZoom - 0.06, CAM_ZOOM_MIN);
       }
-      // Phone quit button
+      // Phone quit
       if (data.type === 'quit_game') exitGame();
+      // Phone mode change
+      if (data.type === 'select_mode' && data.mode) {
+        selectMode(data.mode);
+        showMsg(data.mode.toUpperCase(), '#6ef0a0');
+      }
+    }
+
+    // ============================================================
+    //  CPU RETURN (called via setTimeout – guaranteed to fire)
+    // ============================================================
+    let cpuReturnTimer = null;
+    function scheduleCpuReturn(delayMs) {
+      clearTimeout(cpuReturnTimer);
+      cpuReturnTimer = setTimeout(() => {
+        if (!GS.running || ball.phase !== 'outgoing') return;
+        ball.phase = 'incoming';
+        ball.z = 0;
+        ball.bounceT = 0;
+        ball.bounceOff = 0;
+        ball.vz = Math.min(0.009 + GS.streak * 0.00035, 0.026);
+        ball.x = 0.26 + Math.random() * 0.48;
+        ball.y = 0.34 + Math.random() * 0.16;
+        ball.vx = (Math.random() - 0.5) * 0.002;
+        ball.spinV = (Math.random() > 0.5 ? 1 : -1) * 0.08;
+        swingReceived = false;
+        playHit();
+        document.getElementById('speed-fill').style.width =
+          Math.min((ball.vz / 0.026) * 100, 100) + '%';
+      }, delayMs);
     }
 
     // ============================================================
@@ -1019,17 +1049,11 @@
         ball.spinV = (Math.random() > 0.5 ? 1 : -1) * (0.08 + power * 0.06);
         ball.bounceT = 0;
 
-        // Wall mode: instant reflect back from z=0
-        if (currentMode === 'wall') {
-          setTimeout(() => {
-            if (GS.running) {
-              ball.phase = 'incoming';
-              ball.z = 0;
-              ball.vz = 0.010 + GS.streak * 0.0003;
-              swingReceived = false;
-            }
-          }, 300);
-        }
+        // Schedule CPU return after ball travels to other side
+        // travel time = distance / speed (in frames), * 16ms per frame
+        const distance = ball.z;  // from current z to 0
+        const travelMs = Math.max(300, Math.round((distance / Math.abs(ball.vz)) * 16));
+        scheduleCpuReturn(currentMode === 'wall' ? 350 : travelMs);
 
         playHit();
         spawnParticles(ball.x * C.width, ball.y * C.height);
@@ -1352,94 +1376,148 @@
     //  DRAW SCENE
     // ============================================================
     function drawScene(W, H) {
-      // Camera parallax from phone tilt
-      const cx = camX * 0.85, cy = camY * 0.5;
-
-      // Background image with camera offset
-      if (IMG.bg && IMG.bg.complete && IMG.bg.naturalWidth > 0) {
-        const oversize = 0.05; // 5% oversized to allow panning
-        ctx.drawImage(IMG.bg,
-          -W * oversize + cx * 0.4, -H * oversize + cy * 0.25,
-          W * (1 + oversize * 2), H * (1 + oversize * 2)
-        );
-        const overlay = ctx.createLinearGradient(0, H * 0.4, 0, H);
-        overlay.addColorStop(0, 'rgba(0,0,0,0)');
-        overlay.addColorStop(1, 'rgba(0,0,0,0.55)');
-        ctx.fillStyle = overlay;
-        ctx.fillRect(0, H * 0.4, W, H * 0.6);
-      } else {
-        const sky = ctx.createLinearGradient(0, 0, 0, H);
-        sky.addColorStop(0, '#4a90d9'); sky.addColorStop(0.5, '#87ceeb'); sky.addColorStop(1, '#c2e8b0');
-        ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
-      }
-
-      // Court overlay (perspective lines)
-      const vp = { x: W * 0.5, y: H * 0.50 };
+      // Apply zoom: scale canvas from center
       ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-      ctx.lineWidth = 1.5;
+      ctx.translate(W / 2, H / 2);
+      ctx.scale(camZoom, camZoom);
+      ctx.translate(-W / 2, -H / 2);
 
-      // Sidelines
-      [[0.05, 0.95], [0.14, 0.86], [0.24, 0.76]].forEach(([l, r]) => {
-        ctx.globalAlpha = 0.35;
-        ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(W * l, H); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(W * r, H); ctx.stroke();
-      });
+      if (currentMode === 'wall') {
+        // ── WALL MODE: draw a brick wall ──
+        const bW = 80, bH = 32, gap = 3;
+        const cols = Math.ceil(W / bW) + 2;
+        const rows = Math.ceil(H / bH) + 2;
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < cols; col++) {
+            const offset = (row % 2) * (bW / 2);
+            const x = col * bW - (bW / 2) + offset;
+            const y = row * bH;
+            // Brick gradient
+            const bGrad = ctx.createLinearGradient(x, y, x, y + bH);
+            bGrad.addColorStop(0, '#c0745a');
+            bGrad.addColorStop(0.5, '#a85c42');
+            bGrad.addColorStop(1, '#8b4028');
+            ctx.fillStyle = bGrad;
+            ctx.fillRect(x + gap, y + gap, bW - gap * 2, bH - gap * 2);
+            // Subtle spec highlight
+            ctx.fillStyle = 'rgba(255,220,190,0.08)';
+            ctx.fillRect(x + gap, y + gap, bW - gap * 2, 6);
+          }
+        }
+        // Mortar (gap color)
+        ctx.fillStyle = '#5a4035';
+        // Draw only mortar lines on top
+        for (let row = 0; row <= rows; row++) {
+          ctx.fillRect(0, row * bH - 1, W, gap);
+        }
+        // Overlay gradient to darken bottom (floor effect)
+        const wallOvr = ctx.createLinearGradient(0, H * 0.5, 0, H);
+        wallOvr.addColorStop(0, 'rgba(0,0,0,0)');
+        wallOvr.addColorStop(1, 'rgba(0,0,0,0.65)');
+        ctx.fillStyle = wallOvr;
+        ctx.fillRect(0, H * 0.5, W, H * 0.5);
 
-      // Horizontal court lines
-      for (let d = 0; d < 9; d++) {
-        const t = (d + 1) / 10;
-        const y = vp.y + (H - vp.y) * (t * t * 0.88 + t * 0.12);
-        const spread = W * 0.44 * t;
-        ctx.globalAlpha = 0.12 + t * 0.25;
-        ctx.beginPath(); ctx.moveTo(vp.x - spread, y); ctx.lineTo(vp.x + spread, y); ctx.stroke();
+        // Simple floor line
+        ctx.strokeStyle = '#6a3820';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, H * 0.78);
+        ctx.lineTo(W, H * 0.78);
+        ctx.stroke();
+
+      } else {
+        // ── OUTDOOR MODE: Japan background ──
+        if (IMG.bg && IMG.bg.complete && IMG.bg.naturalWidth > 0) {
+          // camX slides the background only (parallax: bg moves more than court)
+          const slide = camX * 0.7;
+          const oversize = 0.06;
+          ctx.drawImage(IMG.bg,
+            -W * oversize + slide, -H * oversize,
+            W * (1 + oversize * 2), H * (1 + oversize * 2)
+          );
+          const overlay = ctx.createLinearGradient(0, H * 0.4, 0, H);
+          overlay.addColorStop(0, 'rgba(0,0,0,0)');
+          overlay.addColorStop(1, 'rgba(0,0,0,0.55)');
+          ctx.fillStyle = overlay;
+          ctx.fillRect(0, H * 0.4, W, H * 0.6);
+        } else {
+          const sky = ctx.createLinearGradient(0, 0, 0, H);
+          sky.addColorStop(0, '#4a90d9'); sky.addColorStop(0.5, '#87ceeb'); sky.addColorStop(1, '#c2e8b0');
+          ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+        }
       }
 
-      // Center line
-      ctx.globalAlpha = 0.18;
-      ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(vp.x, H); ctx.stroke();
+      // Court overlay (perspective lines) – skip in wall mode
+      if (currentMode !== 'wall') {
+        const vp = { x: W * 0.5, y: H * 0.50 };
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+        ctx.lineWidth = 1.5;
 
-      // Service box cross
-      {
-        const sy = vp.y + (H - vp.y) * 0.35;
-        const spread = W * 0.18;
-        ctx.globalAlpha = 0.22;
-        ctx.beginPath(); ctx.moveTo(vp.x - spread, sy); ctx.lineTo(vp.x + spread, sy); ctx.stroke();
-      }
+        // Sidelines
+        [[0.05, 0.95], [0.14, 0.86], [0.24, 0.76]].forEach(([l, r]) => {
+          ctx.globalAlpha = 0.35;
+          ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(W * l, H); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(W * r, H); ctx.stroke();
+        });
 
-      // Net
-      ctx.globalAlpha = 1;
-      const netY = H * 0.645;
-      const netW = W * 0.32;
-      ctx.shadowColor = 'rgba(255,255,255,0.6)'; ctx.shadowBlur = 10;
-      ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.moveTo(vp.x - netW, netY); ctx.lineTo(vp.x + netW, netY); ctx.stroke();
-      ctx.shadowBlur = 0;
+        // Horizontal court lines
+        for (let d = 0; d < 9; d++) {
+          const t = (d + 1) / 10;
+          const y = vp.y + (H - vp.y) * (t * t * 0.88 + t * 0.12);
+          const spread = W * 0.44 * t;
+          ctx.globalAlpha = 0.12 + t * 0.25;
+          ctx.beginPath(); ctx.moveTo(vp.x - spread, y); ctx.lineTo(vp.x + spread, y); ctx.stroke();
+        }
 
-      // Net mesh
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 0.5;
-      const nH = 22;
-      for (let i = 0; i <= 20; i++) {
-        const nx = vp.x - netW + (netW * 2) * (i / 20);
-        ctx.beginPath(); ctx.moveTo(nx, netY); ctx.lineTo(nx, netY + nH); ctx.stroke();
-      }
-      for (let i = 0; i <= 4; i++) {
-        ctx.beginPath(); ctx.moveTo(vp.x - netW, netY + nH * i / 4); ctx.lineTo(vp.x + netW, netY + nH * i / 4); ctx.stroke();
-      }
+        // Center line
+        ctx.globalAlpha = 0.18;
+        ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(vp.x, H); ctx.stroke();
 
-      // Net posts
-      ctx.strokeStyle = 'rgba(200,150,80,0.9)'; ctx.lineWidth = 5;
-      ctx.beginPath(); ctx.moveTo(vp.x - netW, netY - 8); ctx.lineTo(vp.x - netW, netY + nH + 6); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(vp.x + netW, netY - 8); ctx.lineTo(vp.x + netW, netY + nH + 6); ctx.stroke();
+        // Service box cross
+        {
+          const sy = vp.y + (H - vp.y) * 0.35;
+          const spread = W * 0.18;
+          ctx.globalAlpha = 0.22;
+          ctx.beginPath(); ctx.moveTo(vp.x - spread, sy); ctx.lineTo(vp.x + spread, sy); ctx.stroke();
+        }
 
-      ctx.restore();
+        // Net
+        ctx.globalAlpha = 1;
+        const netY = H * 0.645;
+        const netW = W * 0.32;
+        ctx.shadowColor = 'rgba(255,255,255,0.6)'; ctx.shadowBlur = 10;
+        ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(vp.x - netW, netY); ctx.lineTo(vp.x + netW, netY); ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Net mesh
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 0.5;
+        const nH = 22;
+        for (let i = 0; i <= 20; i++) {
+          const nx = vp.x - netW + (netW * 2) * (i / 20);
+          ctx.beginPath(); ctx.moveTo(nx, netY); ctx.lineTo(nx, netY + nH); ctx.stroke();
+        }
+        for (let i = 0; i <= 4; i++) {
+          ctx.beginPath(); ctx.moveTo(vp.x - netW, netY + nH * i / 4); ctx.lineTo(vp.x + netW, netY + nH * i / 4); ctx.stroke();
+        }
+
+        // Net posts
+        ctx.strokeStyle = 'rgba(200,150,80,0.9)'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(vp.x - netW, netY - 8); ctx.lineTo(vp.x - netW, netY + nH + 6); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(vp.x + netW, netY - 8); ctx.lineTo(vp.x + netW, netY + nH + 6); ctx.stroke();
+
+        ctx.restore(); // end court
+      } // end if not wall
 
       // Vignette
       const vig = ctx.createRadialGradient(W / 2, H / 2, W * 0.25, W / 2, H / 2, W * 0.8);
       vig.addColorStop(0, 'transparent');
       vig.addColorStop(1, 'rgba(0,0,0,0.4)');
       ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+
+      ctx.restore(); // end zoom transform
     }
 
     // ============================================================
@@ -1456,18 +1534,16 @@
       const img = drawRacketPanel._img;
 
       const tiltAngle = racketTiltX * 0.035;
-      const tiltRise = racketTiltY * 1.8;
-      const cx = W * 0.5 + racketTiltX * 7;
-      // Position base so that the racket head is visible in the 240px canvas
-      // The image is 260x320. We want the head to show from top of canvas.
-      // translate to (cx, H-20) so grip is partly off-screen at bottom
-      const baseY = H + 10 + Math.min(Math.max(tiltRise, -20), 20);
+      const tiltRise = Math.min(Math.max(racketTiltY * 1.5, -20), 20);
+      const cx = W * 0.5 + racketTiltX * 6;
+      // baseY: grip sits at canvas bottom (H=300), racket head pokes 280px upward
+      const baseY = H - 5 + tiltRise;
 
       rctx.save();
       rctx.translate(cx, baseY);
       rctx.rotate(tiltAngle);
 
-      const rW = 260, rH = 320;
+      const rW = 220, rH = 280;
       if (img.complete && img.naturalWidth > 0) {
         rctx.drawImage(img, -rW / 2, -rH, rW, rH);
       } else {
