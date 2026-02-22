@@ -773,6 +773,13 @@
     }
     loadImg('bg', 'japan_bg.png');
     loadImg('ball', 'tennis_ball.png');
+    loadImg('bg_riverbank', 'bg_riverbank.png');
+    loadImg('bg_rooftop', 'bg_rooftop.png');
+    loadImg('bg_wall', 'bg_wall.png');
+    loadImg('char_opponent', 'char_opponent.png');
+    loadImg('char_friends', 'char_friends.png');
+    loadImg('char_young_coach', 'char_young_coach.png');
+    loadImg('char_veteran_coach', 'char_veteran_coach.png');
 
     // ============================================================
     //  PEER SETUP
@@ -1382,65 +1389,81 @@
       ctx.scale(camZoom, camZoom);
       ctx.translate(-W / 2, -H / 2);
 
-      if (currentMode === 'wall') {
-        // ── WALL MODE: draw a brick wall ──
-        const bW = 80, bH = 32, gap = 3;
-        const cols = Math.ceil(W / bW) + 2;
-        const rows = Math.ceil(H / bH) + 2;
-        for (let row = 0; row < rows; row++) {
-          for (let col = 0; col < cols; col++) {
-            const offset = (row % 2) * (bW / 2);
-            const x = col * bW - (bW / 2) + offset;
-            const y = row * bH;
-            // Brick gradient
-            const bGrad = ctx.createLinearGradient(x, y, x, y + bH);
-            bGrad.addColorStop(0, '#c0745a');
-            bGrad.addColorStop(0.5, '#a85c42');
-            bGrad.addColorStop(1, '#8b4028');
-            ctx.fillStyle = bGrad;
-            ctx.fillRect(x + gap, y + gap, bW - gap * 2, bH - gap * 2);
-            // Subtle spec highlight
-            ctx.fillStyle = 'rgba(255,220,190,0.08)';
-            ctx.fillRect(x + gap, y + gap, bW - gap * 2, 6);
-          }
-        }
-        // Mortar (gap color)
-        ctx.fillStyle = '#5a4035';
-        // Draw only mortar lines on top
-        for (let row = 0; row <= rows; row++) {
-          ctx.fillRect(0, row * bH - 1, W, gap);
-        }
-        // Overlay gradient to darken bottom (floor effect)
-        const wallOvr = ctx.createLinearGradient(0, H * 0.5, 0, H);
-        wallOvr.addColorStop(0, 'rgba(0,0,0,0)');
-        wallOvr.addColorStop(1, 'rgba(0,0,0,0.65)');
-        ctx.fillStyle = wallOvr;
-        ctx.fillRect(0, H * 0.5, W, H * 0.5);
-
-        // Simple floor line
-        ctx.strokeStyle = '#6a3820';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(0, H * 0.78);
-        ctx.lineTo(W, H * 0.78);
-        ctx.stroke();
-
-      } else {
-        // ── OUTDOOR MODE: Japan background ──
-        if (IMG.bg && IMG.bg.complete && IMG.bg.naturalWidth > 0) {
-          // camX slides the background only (parallax: bg moves more than court)
-          const slide = camX * 0.7;
-          const oversize = 0.06;
-          ctx.drawImage(IMG.bg,
+      // helper function for parallax background
+      function drawModeBackground(imgKey, isWall = false) {
+        if (IMG[imgKey] && IMG[imgKey].complete && IMG[imgKey].naturalWidth > 0) {
+          const slide = isWall ? 0 : camX * 0.7;
+          const oversize = isWall ? 0 : 0.06;
+          ctx.drawImage(IMG[imgKey],
             -W * oversize + slide, -H * oversize,
             W * (1 + oversize * 2), H * (1 + oversize * 2)
           );
-          const overlay = ctx.createLinearGradient(0, H * 0.4, 0, H);
-          overlay.addColorStop(0, 'rgba(0,0,0,0)');
-          overlay.addColorStop(1, 'rgba(0,0,0,0.55)');
-          ctx.fillStyle = overlay;
-          ctx.fillRect(0, H * 0.4, W, H * 0.6);
-        } else {
+          if (!isWall) {
+            const overlay = ctx.createLinearGradient(0, H * 0.4, 0, H);
+            overlay.addColorStop(0, 'rgba(0,0,0,0)');
+            overlay.addColorStop(1, 'rgba(0,0,0,0.55)');
+            ctx.fillStyle = overlay;
+            ctx.fillRect(0, H * 0.4, W, H * 0.6);
+          }
+          return true;
+        }
+        return false;
+      }
+
+      if (currentMode === 'wall') {
+        // ── WALL MODE ──
+        if (!drawModeBackground('bg_wall', true)) {
+          // Fallback to procedural wall
+          const bW = 80, bH = 32, gap = 3;
+          const cols = Math.ceil(W / bW) + 2;
+          const rows = Math.ceil(H / bH) + 2;
+          for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+              const offset = (row % 2) * (bW / 2);
+              const x = col * bW - (bW / 2) + offset;
+              const y = row * bH;
+              // Brick gradient
+              const bGrad = ctx.createLinearGradient(x, y, x, y + bH);
+              bGrad.addColorStop(0, '#c0745a');
+              bGrad.addColorStop(0.5, '#a85c42');
+              bGrad.addColorStop(1, '#8b4028');
+              ctx.fillStyle = bGrad;
+              ctx.fillRect(x + gap, y + gap, bW - gap * 2, bH - gap * 2);
+              // Subtle spec highlight
+              ctx.fillStyle = 'rgba(255,220,190,0.08)';
+              ctx.fillRect(x + gap, y + gap, bW - gap * 2, 6);
+            }
+          }
+          // Mortar (gap color)
+          ctx.fillStyle = '#5a4035';
+          // Draw only mortar lines on top
+          for (let row = 0; row <= rows; row++) {
+            ctx.fillRect(0, row * bH - 1, W, gap);
+          }
+          // Overlay gradient to darken bottom (floor effect)
+          const wallOvr = ctx.createLinearGradient(0, H * 0.5, 0, H);
+          wallOvr.addColorStop(0, 'rgba(0,0,0,0)');
+          wallOvr.addColorStop(1, 'rgba(0,0,0,0.65)');
+          ctx.fillStyle = wallOvr;
+          ctx.fillRect(0, H * 0.5, W, H * 0.5);
+
+          // Simple floor line
+          ctx.strokeStyle = '#6a3820';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(0, H * 0.78);
+          ctx.lineTo(W, H * 0.78);
+          ctx.stroke();
+        }
+
+      } else {
+        // ── OUTDOOR MODES ──
+        let bgKey = 'bg'; // fallback to initial japan_bg.png
+        if (currentMode === 'rally') bgKey = 'bg_riverbank';
+        if (currentMode === 'lesson' || currentMode === 'match') bgKey = 'bg_rooftop';
+
+        if (!drawModeBackground(bgKey)) {
+          // Fallback basic sky
           const sky = ctx.createLinearGradient(0, 0, 0, H);
           sky.addColorStop(0, '#4a90d9'); sky.addColorStop(0.5, '#87ceeb'); sky.addColorStop(1, '#c2e8b0');
           ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
@@ -1507,6 +1530,31 @@
         ctx.strokeStyle = 'rgba(200,150,80,0.9)'; ctx.lineWidth = 5;
         ctx.beginPath(); ctx.moveTo(vp.x - netW, netY - 8); ctx.lineTo(vp.x - netW, netY + nH + 6); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(vp.x + netW, netY - 8); ctx.lineTo(vp.x + netW, netY + nH + 6); ctx.stroke();
+
+        // Draw Characters behind net
+        const drawChar = (img, cx, cy, cWidth, cHeight, alpha = 1) => {
+          if (img && img.complete && img.naturalWidth > 0) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.drawImage(img, cx - cWidth / 2, cy - cHeight, cWidth, cHeight);
+            ctx.restore();
+          }
+        };
+
+        const charBaseY = netY - 5; // behind net
+        const charH = H * 0.35;
+        const charW = charH * 0.8;
+
+        if (currentMode === 'match') {
+          drawChar(IMG.char_opponent, vp.x, charBaseY, charW, charH);
+          // Friends cheering at sidelines
+          drawChar(IMG.char_friends, vp.x - W * 0.3, charBaseY + H * 0.05, charW * 1.5, charH * 0.8, 0.85);
+          drawChar(IMG.char_friends, vp.x + W * 0.3, charBaseY + H * 0.05, charW * 1.5, charH * 0.8, 0.85);
+        } else if (currentMode === 'lesson') {
+          // Alternate coach every 10 balls
+          const isVeteran = Math.floor(lessonBallsDelivered / 10) % 2 === 1;
+          drawChar(isVeteran ? IMG.char_veteran_coach : IMG.char_young_coach, vp.x + W * 0.05, charBaseY, charW, charH);
+        }
 
         ctx.restore(); // end court
       } // end if not wall
