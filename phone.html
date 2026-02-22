@@ -628,6 +628,7 @@
     let cooldown = false;
     let motionActive = false;
     let lastMag = 0;
+    let lastAcc = { x: 0, y: 0, z: 0 };
     const SWING_THRESHOLD = 15;     // Raw magnitude threshold
     let swingDetectedInTest = false;
 
@@ -729,6 +730,7 @@
 
       const mag = Math.sqrt((a.x || 0) ** 2 + (a.y || 0) ** 2 + (a.z || 0) ** 2);
       lastMag = mag;
+      lastAcc = a;
 
       const pct = Math.min((mag / 50) * 100, 100);
 
@@ -821,10 +823,26 @@
       if (cooldown) return;
       cooldown = true;
 
-      // Tell PC to play swing sound
+      // Determine swing type based on latest acceleration snapshot
+      let swingType = 'forehand';
+      const aY = lastAcc.y || 0;
+      const aZ = lastAcc.z || 0;
+      const aX = lastAcc.x || 0;
+
+      if (power < 0.45 && lastMag < 25) {
+        swingType = 'volley'; // short punch "ちょこん"
+      } else if (aY < -6) {
+        swingType = 'slice';  // downward swing
+      } else if (aZ > 12 && power > 0.8) {
+        swingType = 'smash';  // hard forward snap / overhand
+      } else {
+        swingType = 'forehand'; // moving up/forward normally
+      }
+
+      // Tell PC to play swing sound and pass swing type/power
       if (conn && conn.open) {
         conn.send({ type: 'trigger_swing_sound' });
-        conn.send({ type: 'swing', power });
+        conn.send({ type: 'swing', power, swingType, dx: aX });
       }
 
       animSwing('swung');
@@ -866,6 +884,8 @@
     }
 
     function goToPlay() {
+      // Send start to PC
+      if (conn && conn.open) conn.send({ type: 'start_game' });
       // Send mode to PC before switching to play screen
       if (conn && conn.open) conn.send({ type: 'select_mode', mode: selectedMode });
       document.getElementById('screen-test').classList.remove('active');

@@ -96,8 +96,8 @@
     /* Mode Cards */
     .mode-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 14px;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
       width: 100%;
     }
 
@@ -628,6 +628,11 @@
           <div class="mode-name">壁打ちモード</div>
           <div class="mode-desc">壁と永遠に<br>ラリーし続ける</div>
         </div>
+        <div class="mode-card" onclick="selectMode('smash')" id="mode-smash">
+          <span class="mode-icon">💪</span>
+          <div class="mode-name">スマッシュ</div>
+          <div class="mode-desc">ロブを上げて<br>スマッシュ練習</div>
+        </div>
       </div>
 
       <!-- Connect panel -->
@@ -704,6 +709,43 @@
     </div>
 
     <button id="quit-btn" onclick="exitGame()">🚪 やめる</button>
+    <button id="help-btn" onclick="toggleHelp()"
+      style="position:absolute;bottom:20px;right:24px;z-index:30;background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.3);color:rgba(255,255,255,0.75);padding:7px 14px;border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:0.8rem;cursor:pointer;">❓
+      ショット判定</button>
+    <!-- Shot type display -->
+    <div id="shot-type-display"
+      style="display:none;position:absolute;top:90px;left:50%;transform:translateX(-50%);font-family:'Orbitron',monospace;font-size:1.4rem;font-weight:900;pointer-events:none;z-index:25;white-space:nowrap;">
+    </div>
+    <!-- Help overlay -->
+    <div id="help-overlay"
+      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);backdrop-filter:blur(10px);z-index:200;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:24px;overflow-y:auto;">
+      <div
+        style="font-family:'Orbitron',monospace;font-size:1.2rem;font-weight:900;color:var(--gold);margin-bottom:8px;">
+        🎾 ショット判定ルール</div>
+      <div
+        style="max-width:500px;width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:18px;font-size:0.8rem;line-height:2;">
+        <div style="margin-bottom:8px;"><strong style="color:#6ef0a0;">🏸
+            フォアハンド</strong><br>スマホを下から上に振る（画面がPCを向いたまま）<br><span style="color:rgba(255,255,255,0.5);">→
+            左回転で速いボールが飛ぶ</span></div>
+        <div style="margin-bottom:8px;"><strong style="color:#00ccff;">🌬️
+            スライス</strong><br>スマホを上から下に振る（画面がPCを向いたまま）<br><span style="color:rgba(255,255,255,0.5);">→ 右回転でゆるやかに飛ぶ</span>
+        </div>
+        <div style="margin-bottom:8px;"><strong style="color:#f5c842;">⚡
+            ボレー</strong><br>画面を正面向けたままPCの方向にちょこんと倒す<br><span style="color:rgba(255,255,255,0.5);">→ 弾くように前に飛ぶ</span>
+        </div>
+        <div style="margin-bottom:8px;"><strong style="color:#e03030;">💥
+            スマッシュ</strong><br>ボレーの動きを大きく（前方向に強く倒す）<br><span style="color:rgba(255,255,255,0.5);">→ 超高速で叩き込む</span></div>
+        <div style="margin-bottom:8px;"><strong style="color:#ff9966;">🌀
+            スライスサーブ</strong><br>スマッシュ中にスマホを左から右に動かす<br><span style="color:rgba(255,255,255,0.5);">→ 弧を描いて左へ飛ぶ</span>
+        </div>
+        <div style="border-top:1px solid rgba(255,255,255,0.1);margin-top:10px;padding-top:10px;"><strong
+            style="color:#f5c842;">💪
+            スマッシュモード</strong><br>①スマホを下から上に30cm以上動かすとロブが上がる<br>②振りかぶって前方向に強く倒すとスマッシュ判定<br>③地面で跳ね返ると爆速でビューン！</div>
+      </div>
+      <button onclick="toggleHelp()"
+        style="padding:12px 36px;background:var(--gold);color:#111;border:none;border-radius:8px;font-family:'Orbitron',monospace;font-weight:900;font-size:0.85rem;letter-spacing:0.1em;cursor:pointer;margin-top:8px;">✕
+        閉じる</button>
+    </div>
   </div>
 
   <!-- ===== GAME OVER ===== -->
@@ -717,7 +759,7 @@
 
   <script>
     // ============================================================
-    //  SOUND ENGINE
+    //  SOUND ENGINE  (swing volume x2 via synth layering)
     // ============================================================
     const SFX = {
       hit1: new Audio('sounds_racket1.mp3'),
@@ -729,8 +771,8 @@
     Object.values(SFX).forEach(a => { a.preload = 'auto'; a.volume = 0.7; });
     SFX.cheer.volume = 0.25;
     SFX.footstep.volume = 0.15;
+    SFX.swing.volume = 1.0; // max, will be boosted further via synth
 
-    // AudioContext for miss buzz (keep simple synth for miss)
     let audioCtx;
     function getAudioCtx() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -740,15 +782,33 @@
     function playHit() {
       const s = Math.random() > 0.5 ? SFX.hit1 : SFX.hit2;
       s.currentTime = 0; s.play().catch(() => { });
-      // Short footstep shuffle after hit
       setTimeout(() => { SFX.footstep.currentTime = 0; SFX.footstep.play().catch(() => { }); }, 140);
     }
+
     function playSwing() {
-      SFX.swing.currentTime = 0; SFX.swing.play().catch(() => { });
+      // Play swing at max volume + synth whoosh for 2x feel
+      try {
+        const ctx = getAudioCtx();
+        SFX.swing.currentTime = 0;
+        SFX.swing.volume = 1.0;
+        SFX.swing.play().catch(() => { });
+
+        const t = ctx.currentTime;
+        const osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.connect(g); g.connect(ctx.destination);
+        osc.type = 'sine'; osc.frequency.setValueAtTime(220, t);
+        osc.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+        g.gain.setValueAtTime(0.6, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        osc.start(t); osc.stop(t + 0.12);
+      } catch (e) {
+        SFX.swing.currentTime = 0; SFX.swing.play().catch(() => { });
+      }
     }
+
     function playCheer() {
       SFX.cheer.currentTime = 0; SFX.cheer.play().catch(() => { });
     }
+
     function playMiss() {
       try {
         const ctx = getAudioCtx(), t = ctx.currentTime;
@@ -760,6 +820,18 @@
         g.gain.setValueAtTime(0.25, t);
         g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
         osc.start(t); osc.stop(t + 0.45);
+      } catch (e) { }
+    }
+
+    function playBounce() {
+      try {
+        const ctx = getAudioCtx(), t = ctx.currentTime;
+        const osc = ctx.createOscillator(), g = ctx.createGain();
+        osc.connect(g); g.connect(ctx.destination);
+        osc.type = 'sine'; osc.frequency.setValueAtTime(300, t);
+        osc.frequency.exponentialRampToValueAtTime(80, t + 0.1);
+        g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        osc.start(t); osc.stop(t + 0.12);
       } catch (e) { }
     }
 
@@ -843,16 +915,18 @@
     // ============================================================
     let currentMode = 'rally';
     const MODES = {
-      rally: { label: '🎾 RALLY MODE', badge: 'mode-badge-rally' },
-      match: { label: '🏆 MATCH MODE', badge: 'mode-badge-match' },
-      lesson: { label: '📚 LESSON MODE', badge: 'mode-badge-lesson' },
-      wall: { label: '🧱 WALL MODE', badge: 'mode-badge-wall' },
+      rally: { label: '🎾 RALLY MODE' },
+      match: { label: '🏆 MATCH MODE' },
+      lesson: { label: '📚 LESSON MODE' },
+      wall: { label: '🧱 WALL MODE' },
+      smash: { label: '💪 SMASH MODE' },
     };
 
     function selectMode(m) {
       currentMode = m;
       document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('active'));
-      document.getElementById('mode-' + m).classList.add('active');
+      const el = document.getElementById('mode-' + m);
+      if (el) el.classList.add('active');
     }
 
     // ============================================================
@@ -863,9 +937,18 @@
     let particles = [];
     let animId = null;
     let msgTimeout = null;
+    let shotTypeTimeout = null;
     let C, ctx, RC, rctx;
     let sweetZoneActive = false;
     let swingReceived = false;
+    let lastSwingType = 'forehand'; // forehand | slice | volley | smash | sliceserve
+
+    // Opponent CPU position
+    let cpuX = 0.5;
+
+    // Smash mode state
+    let smashPhase = 'ready'; // ready | lob_rising | waiting_smash | smashing
+    let smashLobY = 0;
 
     // Tennis scoring
     const TENNIS_PTS = ['0', '15', '30', '40', 'AD'];
@@ -877,23 +960,21 @@
     let lessonBallsDelivered = 0;
 
     function initGameState() {
-      GS = {
-        score: 0, streak: 0, lives: 3, running: true,
-        rallyCount: 0, bestRally: 0
-      };
+      GS = { score: 0, streak: 0, lives: 3, running: true, rallyCount: 0, bestRally: 0 };
       ball = {
         x: 0.5, y: 0.42, z: 0, vz: 0.009,
-        vx: 0, vy: 0,          // lateral drift
-        spin: 0,               // current rotation angle
-        spinV: 0.06,           // spin speed (rad/frame)
-        bounce: 0,             // vertical bounce offset
-        bounceV: 0,
-        visible: false, phase: 'incoming'
+        vx: 0, spin: 0, spinV: 0.06,
+        bounceT: 0, bounceOff: 0,
+        visible: false, phase: 'incoming',
+        grounded: false,
       };
       particles = [];
       matchState = { playerPts: 0, cpuPts: 0, playerGames: 0, cpuGames: 0, set: 1 };
       lessonIdx = 0;
       lessonBallsDelivered = 0;
+      cpuX = 0.5;
+      smashPhase = 'ready';
+      lastSwingType = 'forehand';
     }
 
     // Camera / phone tilt state
@@ -956,6 +1037,19 @@
     // ============================================================
     function serve() {
       if (!GS.running) return;
+
+      if (currentMode === 'smash') {
+        // In smash mode, ball starts ready for lob trigger
+        smashPhase = 'ready';
+        ball = {
+          x: 0.5, y: 0.8, z: 0.8, vz: 0, visible: true, phase: 'smash_idle',
+          spin: 0, spinV: 0.03, bounceT: 0, bounceOff: 0, grounded: false, vx: 0
+        };
+        showMsg('下から上に振ってロブを上げろ！', '#f5c842');
+        swingReceived = false;
+        return;
+      }
+
       const baseSpd = currentMode === 'lesson' ? 0.007 : 0.007 + GS.score * 0.00012;
       const spd = Math.min(baseSpd, 0.026);
 
@@ -974,7 +1068,10 @@
       ball = {
         x: bx, y: 0.36 + Math.random() * 0.14,
         z: 0, vz: spd, visible: true, phase: 'incoming',
-        vx: 0, spin: 0, spinV: 0.05, bounceT: 0, bounceOff: 0
+        vx: 0, spin: 0, spinV: 0.05, bounceT: 0, bounceOff: 0,
+        grounded: false,
+        // Bounce wave: incoming balls bounce as they near player
+        bounceWave: 0,
       };
       swingReceived = false;
       sweetZoneActive = false;
@@ -986,28 +1083,70 @@
     // ============================================================
     function onControllerData(data) {
       if (data.type === 'trigger_swing_sound') playSwing();
-      if (data.type === 'swing' && GS.running && ball.visible) {
-        handleSwing(data.power || 0.75);
+
+      if (data.type === 'swing' && GS.running) {
+        const swingType = data.swingType || 'forehand';
+        const power = data.power || 0.75;
+        if (currentMode === 'smash') {
+          handleSmashSwing(swingType, power, data.dx || 0);
+        } else if (ball.visible) {
+          handleSwing(power, swingType);
+        }
       }
-      // Phone tilt → PC racket tilts ONLY
+
+      // スマホ「プレイ開始」でゲームスタート
+      if (data.type === 'start_game') {
+        if (document.getElementById('lobby').style.display !== 'none') {
+          startGame();
+        }
+      }
+
       if (data.type === 'tilt') {
         racketTiltX = data.x || 0;
         racketTiltY = data.y || 0;
       }
-      // Touch-zone movement
       if (data.type === 'move') {
         if (data.dir === 'left') camX = Math.max(camX - 32, -CAM_X_MAX);
         if (data.dir === 'right') camX = Math.min(camX + 32, CAM_X_MAX);
         if (data.dir === 'fwd') camZoom = Math.min(camZoom + 0.06, CAM_ZOOM_MAX);
         if (data.dir === 'back') camZoom = Math.max(camZoom - 0.06, CAM_ZOOM_MIN);
       }
-      // Phone quit
       if (data.type === 'quit_game') exitGame();
-      // Phone mode change
       if (data.type === 'select_mode' && data.mode) {
         selectMode(data.mode);
         showMsg(data.mode.toUpperCase(), '#6ef0a0');
       }
+    }
+
+    // ============================================================
+    //  SHOT TYPE DISPLAY
+    // ============================================================
+    const SHOT_COLORS = {
+      forehand: '#6ef0a0',
+      slice: '#00ccff',
+      volley: '#f5c842',
+      smash: '#e03030',
+      sliceserve: '#ff9966',
+    };
+    const SHOT_LABELS = {
+      forehand: '🏸 フォア！',
+      slice: '🌬️ スライス！',
+      volley: '⚡ ボレー！',
+      smash: '💥 スマッシュ！！',
+      sliceserve: '🌀 スライスサーブ！',
+    };
+
+    function showShotType(type) {
+      lastSwingType = type;
+      const el = document.getElementById('shot-type-display');
+      if (!el) return;
+      el.textContent = SHOT_LABELS[type] || type;
+      el.style.color = SHOT_COLORS[type] || '#fff';
+      el.style.textShadow = `0 0 30px ${SHOT_COLORS[type] || '#fff'}99`;
+      el.style.display = 'block';
+      el.style.opacity = '1';
+      if (shotTypeTimeout) clearTimeout(shotTypeTimeout);
+      shotTypeTimeout = setTimeout(() => { el.style.opacity = '0'; setTimeout(() => { el.style.display = 'none'; }, 400); }, 900);
     }
 
     // ============================================================
@@ -1018,10 +1157,29 @@
       clearTimeout(cpuReturnTimer);
       cpuReturnTimer = setTimeout(() => {
         if (!GS.running || ball.phase !== 'outgoing') return;
+
+        // CPU fails 20% of the time in rally/match mode
+        if ((currentMode === 'rally' || currentMode === 'match') && Math.random() < 0.20) {
+          // CPU misses
+          ball.visible = false;
+          GS.score += 15;
+          GS.streak++;
+          GS.rallyCount++;
+          if (GS.rallyCount > GS.bestRally) GS.bestRally = GS.rallyCount;
+          showMsg('エース！', '#f5c842');
+          playCheer();
+          updateHUD();
+          if (currentMode === 'match') awardMatchPoint('player');
+          setTimeout(serve, 1400);
+          return;
+        }
+
         ball.phase = 'incoming';
         ball.z = 0;
         ball.bounceT = 0;
         ball.bounceOff = 0;
+        ball.bounceWave = 0;
+        ball.grounded = false;
         ball.vz = Math.min(0.009 + GS.streak * 0.00035, 0.026);
         ball.x = 0.26 + Math.random() * 0.48;
         ball.y = 0.34 + Math.random() * 0.16;
@@ -1035,9 +1193,9 @@
     }
 
     // ============================================================
-    //  SWING HANDLING
+    //  SWING HANDLING – with shot types
     // ============================================================
-    function handleSwing(power) {
+    function handleSwing(power, swingType) {
       if (!ball.visible || ball.phase !== 'incoming') return;
       if (swingReceived) return;
 
@@ -1049,21 +1207,52 @@
         GS.rallyCount++;
         if (GS.rallyCount > GS.bestRally) GS.bestRally = GS.rallyCount;
 
-        // Send ball back
         ball.phase = 'outgoing';
-        ball.vz = -(0.010 + power * 0.012);   // always strong enough to cross the net
-        ball.vx = (Math.random() - 0.5) * 0.003;
-        ball.spinV = (Math.random() > 0.5 ? 1 : -1) * (0.08 + power * 0.06);
-        ball.bounceT = 0;
+        // Default outgoing speed from power
+        let outSpeed = 0.010 + power * 0.015;
 
-        // Schedule CPU return after ball travels to other side
-        // travel time = distance / speed (in frames), * 16ms per frame
-        const distance = ball.z;  // from current z to 0
+        switch (swingType) {
+          case 'forehand':
+            ball.spinV = -0.12 * power;    // left spin
+            ball.vx = (Math.random() - 0.5) * 0.003;
+            outSpeed = 0.012 + power * 0.016;
+            break;
+          case 'slice':
+            ball.spinV = 0.07 * power;     // right spin, slower
+            ball.vx = (Math.random() - 0.5) * 0.002;
+            outSpeed = 0.008 + power * 0.010;
+            break;
+          case 'volley':
+            ball.spinV = 0.02;
+            ball.vx = (Math.random() - 0.5) * 0.001;
+            outSpeed = 0.010 + power * 0.008; // shorter, punchy
+            break;
+          case 'smash':
+            ball.spinV = (Math.random() > 0.5 ? -1 : 1) * 0.15;
+            ball.vx = (Math.random() - 0.5) * 0.004;
+            outSpeed = 0.018 + power * 0.020; // very fast
+            break;
+          case 'sliceserve':
+            ball.spinV = 0.10;
+            ball.vx = -0.008 - power * 0.006; // curves left
+            outSpeed = 0.014 + power * 0.012;
+            break;
+          default:
+            ball.spinV = (Math.random() > 0.5 ? 1 : -1) * (0.08 + power * 0.06);
+            ball.vx = (Math.random() - 0.5) * 0.003;
+        }
+
+        ball.vz = -outSpeed;
+        ball.bounceT = 0;
+        ball.grounded = false;
+
+        const distance = ball.z;
         const travelMs = Math.max(300, Math.round((distance / Math.abs(ball.vz)) * 16));
         scheduleCpuReturn(currentMode === 'wall' ? 350 : travelMs);
 
         playHit();
-        spawnParticles(ball.x * C.width, ball.y * C.height);
+        spawnParticles(ball.x * C.width, ball.y * C.height, swingType);
+        showShotType(swingType);
         showMsg(hitMsg(), '#f5c842');
         updateHUD();
 
@@ -1073,6 +1262,69 @@
 
       } else if (ball.z > 0.18) {
         showMsg('早い！', '#aaa');
+      }
+    }
+
+    // ============================================================
+    //  SMASH MODE SWING
+    // ============================================================
+    function handleSmashSwing(swingType, power, dx) {
+      if (smashPhase === 'ready' && (swingType === 'forehand')) {
+        // Lob triggered
+        smashPhase = 'lob_rising';
+        smashLobY = 0;
+        ball.visible = true;
+        ball.x = 0.5; ball.y = 0.8; ball.z = 0.6;
+        ball.vy_lob = -0.018; // moving up
+        ball.vz = -0.003;
+        ball.vx = 0;
+        ball.spin = 0; ball.spinV = 0.04;
+        ball.phase = 'lob';
+        playBounce();
+        showMsg('振りかぶれ！', '#6ef0a0');
+        setTimeout(() => {
+          if (smashPhase === 'lob_rising') {
+            smashPhase = 'waiting_smash';
+            showMsg('今だ！叩け！！', '#e03030');
+          }
+        }, 1500);
+        return;
+      }
+      if ((smashPhase === 'waiting_smash' || smashPhase === 'lob_rising') &&
+        (swingType === 'smash' || swingType === 'volley')) {
+        // Determine if slice serve (dx > 3 means phone moved left→right)
+        const isSliceServe = dx > 3;
+        const actualType = isSliceServe ? 'sliceserve' : 'smash';
+        smashPhase = 'smashing';
+        GS.score += Math.floor(50 * power);
+        GS.streak++;
+        updateHUD();
+        ball.phase = 'outgoing';
+        ball.vz = -(0.020 + power * 0.025);
+        ball.vx = isSliceServe ? (-0.010 - power * 0.008) : (Math.random() - 0.5) * 0.005;
+        ball.spinV = isSliceServe ? 0.15 : -0.18;
+        ball.grounded = false;
+        ball.bounceT = 0;
+        playHit();
+        spawnParticles(ball.x * C.width, ball.y * C.height, actualType);
+        showShotType(actualType);
+        if (conn) conn.send({ type: 'result', result: 'hit', score: GS.score });
+        // After hitting far wall / ground, bounce back at high speed
+        setTimeout(() => {
+          if (!GS.running) return;
+          ball.phase = 'bounce_back';
+          ball.z = 0;
+          ball.y = 0.85;
+          ball.vy_lob = -0.025; // bounces high
+          ball.vz = 0.030; // blasts back fast
+          ball.spinV *= -1;
+          playBounce();
+          showMsg('バウンド！', '#ff9966');
+          setTimeout(() => {
+            smashPhase = 'ready';
+            setTimeout(serve, 1200);
+          }, 1800);
+        }, 1000);
       }
     }
 
@@ -1171,12 +1423,13 @@
       const modeLabel = currentMode === 'rally' ? `ラリー ${GS.rallyCount} / Best ${GS.bestRally}` :
         currentMode === 'wall' ? `壁打ち ${GS.streak}連続` :
           currentMode === 'lesson' ? `レッスン球 ${lessonBallsDelivered}` :
-            `セット ${matchState.set}`;
+            currentMode === 'smash' ? `スマッシュ × ${GS.streak}` :
+              `セット ${matchState.set}`;
       document.getElementById('set-val').textContent = modeLabel;
 
-      const livesToShow = currentMode === 'wall' || currentMode === 'lesson' ? 3 : GS.lives;
+      const livesToShow = (currentMode === 'wall' || currentMode === 'lesson' || currentMode === 'smash') ? 3 : GS.lives;
       [0, 1, 2].forEach(i => {
-        document.getElementById('l' + i).classList.toggle('lost', i >= (livesToShow));
+        document.getElementById('l' + i).classList.toggle('lost', i >= livesToShow);
       });
     }
 
@@ -1241,11 +1494,19 @@
     // ============================================================
     //  PARTICLES
     // ============================================================
-    function spawnParticles(x, y) {
-      const colors = ['#f5c842', '#fff', '#6ef0a0', '#ff9966', '#ffccff'];
-      for (let i = 0; i < 36; i++) {
+    function spawnParticles(x, y, swingType) {
+      const colorsByType = {
+        forehand: ['#6ef0a0', '#fff', '#f5c842'],
+        slice: ['#00ccff', '#ffffff', '#88ddff'],
+        volley: ['#f5c842', '#fff', '#ffcc00'],
+        smash: ['#e03030', '#ff6644', '#fff'],
+        sliceserve: ['#ff9966', '#ffccaa', '#fff'],
+      };
+      const colors = colorsByType[swingType] || ['#f5c842', '#fff', '#6ef0a0', '#ff9966', '#ffccff'];
+      const count = swingType === 'smash' || swingType === 'sliceserve' ? 55 : 36;
+      for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const speed = 3 + Math.random() * 12;
+        const speed = 3 + Math.random() * 14;
         particles.push({
           x, y,
           vx: Math.cos(angle) * speed,
@@ -1265,53 +1526,76 @@
       ctx.clearRect(0, 0, C.width, C.height);
       const W = C.width, H = C.height;
 
-      // Smooth camera
       drawScene(W, H);
 
+      // CPU opponent follows the ball
+      if (currentMode === 'rally' || currentMode === 'match' || currentMode === 'lesson') {
+        cpuX += (ball.x - cpuX) * 0.04;
+      }
+
       if (ball.visible) {
-        // Update ball physics
-        ball.z += ball.vz;
-        ball.x += (0.5 - ball.x) * 0.003 + (ball.vx || 0);
-        ball.y += (0.44 - ball.y) * 0.003;
-        ball.spin = (ball.spin || 0) + (ball.spinV || 0.05);
-
-        // Miss fly-away extra movement
-        if (ball.phase === 'missed') {
-          ball.x += ball.vx_miss || 0;
-          ball.y += ball.vy_miss || 0;
-          ball.vy_miss = (ball.vy_miss || 0) + 0.0002; // gravity pull
-        }
-
-        // Bounce animation: sin wave on y when outgoing
-        if (ball.phase === 'outgoing') {
-          ball.bounceT = (ball.bounceT || 0) + 0.25;
-          ball.bounceOff = Math.abs(Math.sin(ball.bounceT)) * 0.03 * (1 - ball.z);
+        // --- Update ball physics ---
+        if (ball.phase === 'lob' || ball.phase === 'bounce_back') {
+          // Smash mode lob physics
+          ball.vy_lob = (ball.vy_lob || 0) + 0.0006; // gravity
+          ball.y += ball.vy_lob;
+          ball.z += ball.vz;
+          ball.x += ball.vx || 0;
+          ball.spin = (ball.spin || 0) + (ball.spinV || 0.04);
+          if (ball.y < 0.15) ball.vy_lob = Math.abs(ball.vy_lob) * 0.5; // top bounce
+        } else if (ball.phase === 'smash_idle') {
+          // Just float subtly
+          ball.y = 0.75 + Math.sin(Date.now() * 0.003) * 0.03;
+          ball.spin = (ball.spin || 0) + 0.03;
         } else {
-          ball.bounceT = 0;
-          ball.bounceOff = 0;
-        }
+          ball.z += ball.vz;
+          ball.x += (0.5 - ball.x) * 0.003 + (ball.vx || 0);
+          ball.y += (0.44 - ball.y) * 0.003;
+          ball.spin = (ball.spin || 0) + (ball.spinV || 0.05);
 
-        // CPU returns ball (z goes from player-side high ~0.7 down towards 0)
-        if (ball.phase === 'outgoing' && ball.z < 0.05) {
-          ball.phase = 'incoming';
-          ball.z = 0;                   // reset to far end
-          ball.vz = 0.009 + GS.streak * 0.0004;  // speed up with rally
-          ball.vz = Math.min(ball.vz, 0.026);
-          ball.x = 0.28 + Math.random() * 0.44;
-          ball.y = 0.35 + Math.random() * 0.16;
-          ball.vx = (Math.random() - 0.5) * 0.002;
-          ball.spinV = (Math.random() > 0.5 ? 1 : -1) * 0.07;
-          ball.bounceT = 0;
-          swingReceived = false;
-          playHit();
-          document.getElementById('speed-fill').style.width = Math.min((ball.vz / 0.026) * 100, 100) + '%';
+          if (ball.phase === 'missed') {
+            ball.x += ball.vx_miss || 0;
+            ball.y += ball.vy_miss || 0;
+            ball.vy_miss = (ball.vy_miss || 0) + 0.0002;
+          }
+
+          // Bounce wave when incoming (balls bounce as they approach)
+          if (ball.phase === 'incoming') {
+            ball.bounceWave = (ball.bounceWave || 0) + 0.18;
+            ball.bounceOff = Math.abs(Math.sin(ball.bounceWave)) * 0.04 * ball.z;
+          }
+
+          if (ball.phase === 'outgoing') {
+            ball.bounceT = (ball.bounceT || 0) + 0.25;
+            ball.bounceOff = Math.abs(Math.sin(ball.bounceT)) * 0.03 * (1 - ball.z);
+          } else if (ball.phase !== 'incoming') {
+            ball.bounceT = 0;
+            ball.bounceOff = 0;
+          }
+
+          if (ball.phase === 'outgoing' && ball.z < 0.05) {
+            ball.phase = 'incoming';
+            ball.z = 0;
+            ball.vz = 0.009 + GS.streak * 0.0004;
+            ball.vz = Math.min(ball.vz, 0.026);
+            ball.x = 0.28 + Math.random() * 0.44;
+            ball.y = 0.35 + Math.random() * 0.16;
+            ball.vx = (Math.random() - 0.5) * 0.002;
+            ball.spinV = (Math.random() > 0.5 ? 1 : -1) * 0.07;
+            ball.bounceT = 0;
+            ball.bounceWave = 0;
+            swingReceived = false;
+            playHit();
+            document.getElementById('speed-fill').style.width =
+              Math.min((ball.vz / 0.026) * 100, 100) + '%';
+          }
         }
 
         const dispY = ball.y - (ball.bounceOff || 0);
         const bx = ball.x * W, by = dispY * H;
         const bs = Math.max(3, 5 + ball.z * 88);
 
-        // Shadow on court
+        // Shadow
         const shadowY = H * 0.79;
         ctx.save();
         ctx.globalAlpha = Math.max(0, ball.z * 0.45);
@@ -1321,7 +1605,7 @@
         ctx.fill();
         ctx.restore();
 
-        // Zone glow
+        // Sweet zone glow
         if (ball.phase === 'incoming' && ball.z > 0.52) {
           sweetZoneActive = true;
           ctx.save();
@@ -1334,7 +1618,7 @@
           ctx.fill(); ctx.restore();
         } else { sweetZoneActive = false; }
 
-        // Ball with spin rotation
+        // Ball with spin
         ctx.save();
         ctx.translate(bx, by);
         ctx.rotate(ball.spin || 0);
@@ -1364,14 +1648,14 @@
         if (ball.phase === 'incoming' && ball.z > 1.12) ballMissed();
       }
 
-      // Particles
+      // Particles – bug fix: Math.max(0.01)
       particles = particles.filter(p => p.life > 0);
       particles.forEach(p => {
         p.x += p.vx; p.y += p.vy;
         p.vy += 0.5; p.life -= 0.03;
-        ctx.save(); ctx.globalAlpha = p.life;
+        ctx.save(); ctx.globalAlpha = Math.max(0, p.life);
         ctx.fillStyle = p.col; ctx.shadowColor = p.col; ctx.shadowBlur = 5;
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.01, p.r * p.life), 0, Math.PI * 2);
         ctx.fill(); ctx.restore();
       });
 
@@ -1541,15 +1825,14 @@
           }
         };
 
-        const charBaseY = netY - 5; // behind net
-        const charH = H * 0.35;
-        const charW = charH * 0.8;
-
-        if (currentMode === 'match') {
-          drawChar(IMG.char_opponent, vp.x, charBaseY, charW, charH);
-          // Friends cheering at sidelines
-          drawChar(IMG.char_friends, vp.x - W * 0.3, charBaseY + H * 0.05, charW * 1.5, charH * 0.8, 0.85);
-          drawChar(IMG.char_friends, vp.x + W * 0.3, charBaseY + H * 0.05, charW * 1.5, charH * 0.8, 0.85);
+        if (currentMode === 'match' || currentMode === 'rally') {
+          // CPU opponent follows ball horizontally
+          const cpuScreenX = cpuX * W;
+          drawChar(IMG.char_opponent, cpuScreenX, charBaseY, charW, charH);
+          if (currentMode === 'match') {
+            drawChar(IMG.char_friends, vp.x - W * 0.3, charBaseY + H * 0.05, charW * 1.5, charH * 0.8, 0.85);
+            drawChar(IMG.char_friends, vp.x + W * 0.3, charBaseY + H * 0.05, charW * 1.5, charH * 0.8, 0.85);
+          }
         } else if (currentMode === 'lesson') {
           // Alternate coach every 10 balls
           const isVeteran = Math.floor(lessonBallsDelivered / 10) % 2 === 1;
