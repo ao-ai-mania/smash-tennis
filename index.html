@@ -874,12 +874,24 @@
         score: 0, streak: 0, lives: 3, running: true,
         rallyCount: 0, bestRally: 0
       };
-      ball = { x: 0.5, y: 0.42, z: 0, vz: 0.009, visible: false, phase: 'incoming' };
+      ball = {
+        x: 0.5, y: 0.42, z: 0, vz: 0.009,
+        vx: 0, vy: 0,          // lateral drift
+        spin: 0,               // current rotation angle
+        spinV: 0.06,           // spin speed (rad/frame)
+        bounce: 0,             // vertical bounce offset
+        bounceV: 0,
+        visible: false, phase: 'incoming'
+      };
       particles = [];
       matchState = { playerPts: 0, cpuPts: 0, playerGames: 0, cpuGames: 0, set: 1 };
       lessonIdx = 0;
       lessonBallsDelivered = 0;
     }
+
+    // Camera / phone tilt state
+    let camX = 0, camY = 0;     // parallax offset (pixels)
+    let racketTiltX = 0, racketTiltY = 0;  // from phone orientation
 
     // ============================================================
     //  GAME START
@@ -969,6 +981,22 @@
       if (data.type === 'swing' && GS.running && ball.visible) {
         handleSwing(data.power || 0.75);
       }
+      // Phone tilt → PC racket moves
+      if (data.type === 'tilt') {
+        racketTiltX = data.x || 0;
+        racketTiltY = data.y || 0;
+        // Camera parallax
+        camX = racketTiltX * 18;
+        camY = racketTiltY * 10;
+      }
+      // Movement buttons
+      if (data.type === 'move') {
+        const step = 0.04;
+        if (data.dir === 'left') camX = Math.max(camX - 30, -80);
+        if (data.dir === 'right') camX = Math.min(camX + 30, 80);
+        if (data.dir === 'up') camY = Math.max(camY - 20, -50);
+        if (data.dir === 'down') camY = Math.min(camY + 20, 50);
+      }
     }
 
     // ============================================================
@@ -978,7 +1006,7 @@
       if (!ball.visible || ball.phase !== 'incoming') return;
       if (swingReceived) return;
 
-      if (ball.z > 0.55) {
+      if (ball.z > 0.52) {
         swingReceived = true;
         const bonus = Math.floor(power * 30);
         GS.score += 10 + bonus + GS.streak * 5;
@@ -986,28 +1014,20 @@
         GS.rallyCount++;
         if (GS.rallyCount > GS.bestRally) GS.bestRally = GS.rallyCount;
 
-        // Ball goes back
+        // Ball goes back — negate z velocity and give random lateral drift
         ball.phase = 'outgoing';
-        ball.vz = -(Math.abs(ball.vz) * 1.06);
+        const speed = Math.abs(ball.vz) * (1.04 + power * 0.06);
+        ball.vz = -Math.min(speed, 0.03);
+        ball.vx = (Math.random() - 0.5) * 0.003;  // slight left/right drift
+        ball.spinV = (Math.random() > 0.5 ? 1 : -1) * (0.08 + power * 0.06);
 
         playHit();
         spawnParticles(ball.x * C.width, ball.y * C.height);
         showMsg(hitMsg(), '#f5c842');
         updateHUD();
 
-        // Match mode scoring
-        if (currentMode === 'match') {
-          awardMatchPoint('player');
-        }
-
+        if (currentMode === 'match') awardMatchPoint('player');
         if (conn) conn.send({ type: 'result', result: 'hit', score: GS.score });
-
-        // Wall mode: immediate reflect
-        if (currentMode === 'wall') {
-          setTimeout(() => { if (GS.running) { ball.phase = 'incoming'; ball.vz = Math.abs(ball.vz); swingReceived = false; } }, 200);
-        }
-
-        // Cheer on milestone
         if (GS.streak % 5 === 0) setTimeout(playCheer, 300);
 
       } else if (ball.z > 0.2) {
@@ -1016,12 +1036,15 @@
     }
 
     // ============================================================
-    //  BALL MISSED
+    //  BALL MISSED – fly away animation
     // ============================================================
     function ballMissed() {
       if (ball.phase === 'missed') return;
       ball.phase = 'missed';
-      ball.visible = false;
+      // Don't hide immediately – let it fly away
+      ball.vz = 0.025;    // keeps moving away
+      ball.vy_miss = -0.006;  // rises slightly
+      ball.vx_miss = (Math.random() - 0.5) * 0.008;
       GS.rallyCount = 0;
       GS.streak = 0;
       GS.lives--;
@@ -1032,17 +1055,21 @@
 
       if (currentMode === 'match') awardMatchPoint('cpu');
 
+      // Hide after short fly animation (0.6s)
+      setTimeout(() => { ball.visible = false; }, 600);
+
       if (currentMode === 'wall' || currentMode === 'lesson') {
-        setTimeout(serve, 1200); // Never lose a life in these modes
+        const nextDelay = 1000;
         GS.lives = Math.max(GS.lives + 1, 3);
         updateHUD();
+        setTimeout(serve, nextDelay);
         return;
       }
 
       if (GS.lives <= 0) {
-        setTimeout(endGame, 900);
+        setTimeout(endGame, 1100);
       } else {
-        setTimeout(serve, 1400);
+        setTimeout(serve, 1600);
       }
     }
 
@@ -1191,42 +1218,66 @@
       ctx.clearRect(0, 0, C.width, C.height);
       const W = C.width, H = C.height;
 
+      // Smooth camera
       drawScene(W, H);
 
       if (ball.visible) {
+        // Update ball physics
         ball.z += ball.vz;
-        ball.x += (0.5 - ball.x) * 0.004;
-        ball.y += (0.44 - ball.y) * 0.004;
+        ball.x += (0.5 - ball.x) * 0.003 + (ball.vx || 0);
+        ball.y += (0.44 - ball.y) * 0.003;
+        ball.spin = (ball.spin || 0) + (ball.spinV || 0.05);
 
-        // CPU returns ball
-        if (ball.phase === 'outgoing' && ball.z <= 0) {
-          ball.phase = 'incoming';
-          ball.vz = Math.abs(ball.vz) + 0.0006;
-          ball.x = 0.36 + Math.random() * 0.28;
-          ball.y = 0.35 + Math.random() * 0.16;
-          playHit();
-          swingReceived = false;
-          document.getElementById('speed-fill').style.width = Math.min((ball.vz / 0.026) * 100, 100) + '%';
+        // Miss fly-away extra movement
+        if (ball.phase === 'missed') {
+          ball.x += ball.vx_miss || 0;
+          ball.y += ball.vy_miss || 0;
+          ball.vy_miss = (ball.vy_miss || 0) + 0.0002; // gravity pull
         }
 
-        const bx = ball.x * W, by = ball.y * H;
-        const bs = 5 + ball.z * 88;
+        // Bounce animation: sin wave on y when outgoing
+        if (ball.phase === 'outgoing') {
+          ball.bounceT = (ball.bounceT || 0) + 0.25;
+          ball.bounceOff = Math.abs(Math.sin(ball.bounceT)) * 0.03 * (1 - ball.z);
+        } else {
+          ball.bounceT = 0;
+          ball.bounceOff = 0;
+        }
 
-        // Shadow
+        // CPU returns ball
+        if (ball.phase === 'outgoing' && ball.z <= 0.01) {
+          ball.phase = 'incoming';
+          ball.vz = Math.abs(ball.vz) + 0.0008;
+          ball.vz = Math.min(ball.vz, 0.025);
+          ball.x = 0.3 + Math.random() * 0.4;
+          ball.y = 0.35 + Math.random() * 0.16;
+          ball.vx = (Math.random() - 0.5) * 0.002;
+          ball.spinV = (Math.random() > 0.5 ? 1 : -1) * 0.07;
+          ball.bounceT = 0;
+          playHit();
+          swingReceived = false;
+          document.getElementById('speed-fill').style.width = Math.min((ball.vz / 0.025) * 100, 100) + '%';
+        }
+
+        const dispY = ball.y - (ball.bounceOff || 0);
+        const bx = ball.x * W, by = dispY * H;
+        const bs = Math.max(3, 5 + ball.z * 88);
+
+        // Shadow on court
         const shadowY = H * 0.79;
         ctx.save();
-        ctx.globalAlpha = ball.z * 0.45;
+        ctx.globalAlpha = Math.max(0, ball.z * 0.45);
         ctx.fillStyle = '#000';
         ctx.beginPath();
-        ctx.ellipse(bx, shadowY, bs * 0.65, bs * 0.2, 0, 0, Math.PI * 2);
+        ctx.ellipse(bx, shadowY, bs * 0.7, bs * 0.22, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
 
         // Zone glow
-        if (ball.phase === 'incoming' && ball.z > 0.55) {
+        if (ball.phase === 'incoming' && ball.z > 0.52) {
           sweetZoneActive = true;
           ctx.save();
-          ctx.globalAlpha = (0.25 + Math.sin(Date.now() * 0.025) * 0.15) * (ball.z - 0.55) * 2.2;
+          ctx.globalAlpha = (0.22 + Math.sin(Date.now() * 0.025) * 0.13) * (ball.z - 0.52) * 2.5;
           const grd = ctx.createRadialGradient(bx, by, 0, bx, by, bs * 4);
           grd.addColorStop(0, 'rgba(245,200,66,0.5)');
           grd.addColorStop(1, 'rgba(245,200,66,0)');
@@ -1235,38 +1286,41 @@
           ctx.fill(); ctx.restore();
         } else { sweetZoneActive = false; }
 
-        // Ball
+        // Ball with spin rotation
         ctx.save();
+        ctx.translate(bx, by);
+        ctx.rotate(ball.spin || 0);
         ctx.beginPath();
-        ctx.arc(bx, by, bs, 0, Math.PI * 2);
+        ctx.arc(0, 0, bs, 0, Math.PI * 2);
         ctx.clip();
         if (IMG.ball && IMG.ball.complete && IMG.ball.naturalWidth > 0) {
-          ctx.drawImage(IMG.ball, bx - bs, by - bs, bs * 2, bs * 2);
+          ctx.drawImage(IMG.ball, -bs, -bs, bs * 2, bs * 2);
         } else {
-          const bg = ctx.createRadialGradient(bx - bs * 0.3, by - bs * 0.3, 0, bx, by, bs);
+          const bg = ctx.createRadialGradient(-bs * 0.3, -bs * 0.3, 0, 0, 0, bs);
           bg.addColorStop(0, '#fffff0'); bg.addColorStop(0.4, '#e8d44d'); bg.addColorStop(1, '#b89800');
-          ctx.fillStyle = bg; ctx.fill();
+          ctx.fillStyle = bg;
+          ctx.beginPath(); ctx.arc(0, 0, bs, 0, Math.PI * 2); ctx.fill();
         }
         ctx.restore();
 
-        // Dashed ring when in sweet zone
-        if (ball.phase === 'incoming' && ball.z > 0.48) {
-          const ra = Math.min((ball.z - 0.48) * 2.2, 0.85);
+        // Dashed ring
+        if (ball.phase === 'incoming' && ball.z > 0.45) {
+          const ra = Math.min((ball.z - 0.45) * 2, 0.9);
           ctx.save(); ctx.globalAlpha = ra;
           ctx.strokeStyle = '#f5c842'; ctx.lineWidth = 2;
-          ctx.setLineDash([8, 6]); ctx.lineDashOffset = -Date.now() * 0.06;
-          ctx.beginPath(); ctx.arc(bx, by, bs * 2, 0, Math.PI * 2);
+          ctx.setLineDash([8, 6]); ctx.lineDashOffset = -Date.now() * 0.07;
+          ctx.beginPath(); ctx.arc(bx, by, bs * 2.1, 0, Math.PI * 2);
           ctx.stroke(); ctx.restore();
         }
 
-        if (ball.phase === 'incoming' && ball.z > 1.1) ballMissed();
+        if (ball.phase === 'incoming' && ball.z > 1.12) ballMissed();
       }
 
       // Particles
       particles = particles.filter(p => p.life > 0);
       particles.forEach(p => {
         p.x += p.vx; p.y += p.vy;
-        p.vy += 0.5; p.life -= 0.032;
+        p.vy += 0.5; p.life -= 0.03;
         ctx.save(); ctx.globalAlpha = p.life;
         ctx.fillStyle = p.col; ctx.shadowColor = p.col; ctx.shadowBlur = 5;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
@@ -1281,17 +1335,22 @@
     //  DRAW SCENE
     // ============================================================
     function drawScene(W, H) {
-      // Background image
+      // Camera parallax from phone tilt
+      const cx = camX * 0.85, cy = camY * 0.5;
+
+      // Background image with camera offset
       if (IMG.bg && IMG.bg.complete && IMG.bg.naturalWidth > 0) {
-        ctx.drawImage(IMG.bg, 0, 0, W, H);
-        // Darken bottom half slightly
+        const oversize = 0.05; // 5% oversized to allow panning
+        ctx.drawImage(IMG.bg,
+          -W * oversize + cx * 0.4, -H * oversize + cy * 0.25,
+          W * (1 + oversize * 2), H * (1 + oversize * 2)
+        );
         const overlay = ctx.createLinearGradient(0, H * 0.4, 0, H);
         overlay.addColorStop(0, 'rgba(0,0,0,0)');
         overlay.addColorStop(1, 'rgba(0,0,0,0.55)');
         ctx.fillStyle = overlay;
         ctx.fillRect(0, H * 0.4, W, H * 0.6);
       } else {
-        // Fallback sky
         const sky = ctx.createLinearGradient(0, 0, 0, H);
         sky.addColorStop(0, '#4a90d9'); sky.addColorStop(0.5, '#87ceeb'); sky.addColorStop(1, '#c2e8b0');
         ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
@@ -1372,45 +1431,66 @@
     function drawRacketPanel() {
       rctx.clearRect(0, 0, RC.width, RC.height);
       const W = RC.width, H = RC.height;
-      const cx = W * 0.5, cy = H - 8;
+
+      // Tilt the racket based on phone orientation
+      const tiltAngle = racketTiltX * 0.04;           // left-right tilt
+      const tiltRaise = racketTiltY * 2;              // forward/back = raise/lower
+      const cx = W * 0.5 + racketTiltX * 6;
+      const cy = H - 8 + tiltRaise * 0.5;
+
+      rctx.save();
+      rctx.translate(cx, cy);
+      rctx.rotate(tiltAngle);
 
       // Handle
       rctx.strokeStyle = '#5a3010'; rctx.lineWidth = 10; rctx.lineCap = 'round';
-      rctx.beginPath(); rctx.moveTo(cx, cy - 8); rctx.lineTo(cx, cy - 65); rctx.stroke();
+      rctx.beginPath();
+      rctx.moveTo(0, -8);
+      rctx.lineTo(0, -65);
+      rctx.stroke();
 
       // Frame glow when active
       if (sweetZoneActive) {
-        rctx.shadowColor = '#f5c842'; rctx.shadowBlur = 18;
+        rctx.shadowColor = '#f5c842'; rctx.shadowBlur = 22;
         rctx.strokeStyle = '#f5c842'; rctx.lineWidth = 4;
       } else {
-        rctx.strokeStyle = 'rgba(255,255,255,0.7)'; rctx.lineWidth = 3; rctx.shadowBlur = 0;
+        rctx.strokeStyle = 'rgba(255,255,255,0.75)'; rctx.lineWidth = 3; rctx.shadowBlur = 0;
       }
-      rctx.beginPath(); rctx.ellipse(cx, cy - 110, 40, 55, 0, 0, Math.PI * 2); rctx.stroke();
+      rctx.beginPath();
+      rctx.ellipse(0, -110, 40, 55, 0, 0, Math.PI * 2);
+      rctx.stroke();
       rctx.shadowBlur = 0;
 
       // Strings
-      rctx.strokeStyle = sweetZoneActive ? 'rgba(245,200,66,0.45)' : 'rgba(255,255,255,0.18)';
+      rctx.strokeStyle = sweetZoneActive ? 'rgba(245,200,66,0.5)' : 'rgba(255,255,255,0.18)';
       rctx.lineWidth = 0.8;
       for (let i = -4; i <= 4; i++) {
-        rctx.beginPath(); rctx.moveTo(cx + i * 9, cy - 165); rctx.lineTo(cx + i * 9, cy - 55); rctx.stroke();
+        rctx.beginPath();
+        rctx.moveTo(i * 9, -165);
+        rctx.lineTo(i * 9, -55);
+        rctx.stroke();
       }
       for (let i = -5; i <= 5; i++) {
-        rctx.beginPath(); rctx.moveTo(cx - 38, cy - 110 + i * 10); rctx.lineTo(cx + 38, cy - 110 + i * 10); rctx.stroke();
+        rctx.beginPath();
+        rctx.moveTo(-38, -110 + i * 10);
+        rctx.lineTo(38, -110 + i * 10);
+        rctx.stroke();
       }
 
-      // Prompt
+      rctx.restore();
+
+      // Prompt overlay – not rotated
       if (sweetZoneActive) {
         rctx.font = 'bold 14px Orbitron, monospace';
         rctx.fillStyle = '#f5c842';
         rctx.globalAlpha = 0.7 + Math.sin(Date.now() * 0.012) * 0.3;
         rctx.textAlign = 'center';
-        rctx.fillText('▲ 今！振って！ ▲', cx, 22);
+        rctx.fillText('▲ 今！排って！ ▲', W * 0.5, 22);
         rctx.globalAlpha = 1;
       }
 
-      // Mode-specific small text
       rctx.font = '11px Noto Sans JP, sans-serif';
-      rctx.fillStyle = 'rgba(255,255,255,0.3)';
+      rctx.fillStyle = 'rgba(255,255,255,0.25)';
       rctx.textAlign = 'right';
       rctx.fillText('SPACE / ↑ でも打てます', W - 16, H - 12);
     }

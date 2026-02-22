@@ -421,6 +421,28 @@
       opacity: 0.5;
     }
 
+    /* D-pad buttons */
+    .dpad-btn {
+      width: 44px;
+      height: 44px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: rgba(255, 255, 255, 0.8);
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .dpad-btn:active {
+      background: rgba(245, 200, 66, 0.4);
+      border-color: var(--gold);
+    }
+
     .tilt-label {
       font-family: 'Orbitron', monospace;
       font-size: 0.45rem;
@@ -521,6 +543,31 @@
       <div class="power-bar-track">
         <div class="power-bar-fill" id="play-power-fill"></div>
       </div>
+    </div>
+
+    <!-- D-PAD MOVEMENT BUTTONS -->
+    <div id="dpad" style="
+      position: absolute;
+      bottom: 20px; left: 50%; transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: 44px 44px 44px;
+      grid-template-rows: 44px 44px 44px;
+      gap: 4px; z-index: 20;
+    ">
+      <div></div>
+      <button class="dpad-btn" ontouchstart="sendMove('up')" onclick="sendMove('up')"
+        style="grid-column:2;grid-row:1">▲</button>
+      <div></div>
+      <button class="dpad-btn" ontouchstart="sendMove('left')" onclick="sendMove('left')"
+        style="grid-column:1;grid-row:2">◀</button>
+      <div style="background:rgba(255,255,255,0.06);border-radius:50%;width:44px;height:44px;grid-column:2;grid-row:2;">
+      </div>
+      <button class="dpad-btn" ontouchstart="sendMove('right')" onclick="sendMove('right')"
+        style="grid-column:3;grid-row:2">▶</button>
+      <div></div>
+      <button class="dpad-btn" ontouchstart="sendMove('down')" onclick="sendMove('down')"
+        style="grid-column:2;grid-row:3">▼</button>
+      <div></div>
     </div>
 
     <div id="tilt-indicator">
@@ -666,18 +713,27 @@
     }
 
     function onOrientation(e) {
-      // Tilt racket background image
       const bg = document.getElementById('racket-bg');
-      if (!bg) return;
-      const beta = Math.max(-30, Math.min(30, e.beta - 45));   // forward/backward tilt
-      const gamma = Math.max(-25, Math.min(25, e.gamma || 0));  // left/right tilt
-      bg.style.transform = `rotate(${gamma * 0.4}deg) translateY(${beta * 0.5}px)`;
+      const beta = Math.max(-30, Math.min(30, (e.beta || 0) - 45));  // forward/back
+      const gamma = Math.max(-25, Math.min(25, e.gamma || 0));         // left/right
+
+      // Tilt racket image on phone
+      if (bg) bg.style.transform = `rotate(${gamma * 0.4}deg) translateY(${beta * 0.5}px)`;
 
       // Tilt dots
       const tx = document.getElementById('tilt-x-dot');
       const ty = document.getElementById('tilt-y-dot');
       if (tx) tx.style.left = (50 + gamma * 1.5) + '%';
       if (ty) ty.style.left = (50 + beta * 1.0) + '%';
+
+      // Stream tilt data to PC (throttled to ~20fps)
+      if (conn && conn.open) {
+        const now = Date.now();
+        if (!onOrientation._last || now - onOrientation._last > 50) {
+          onOrientation._last = now;
+          conn.send({ type: 'tilt', x: gamma, y: beta });
+        }
+      }
     }
 
     // ============================================================
@@ -689,6 +745,10 @@
     }
     function onSwingClick() {
       if (!cooldown) doSwing(0.75);
+    }
+
+    function sendMove(dir) {
+      if (conn && conn.open) conn.send({ type: 'move', dir });
     }
 
     function doSwing(power) {
