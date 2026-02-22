@@ -909,7 +909,7 @@
 
       function resize() {
         C.width = window.innerWidth; C.height = window.innerHeight;
-        RC.width = window.innerWidth; RC.height = 160;
+        RC.width = window.innerWidth; RC.height = 240;  // taller so racket head fits
       }
       resize();
       window.addEventListener('resize', resize);
@@ -964,7 +964,8 @@
 
       ball = {
         x: bx, y: 0.36 + Math.random() * 0.14,
-        z: 0, vz: spd, visible: true, phase: 'incoming'
+        z: 0, vz: spd, visible: true, phase: 'incoming',
+        vx: 0, spin: 0, spinV: 0.05, bounceT: 0, bounceOff: 0
       };
       swingReceived = false;
       sweetZoneActive = false;
@@ -992,6 +993,8 @@
         if (data.dir === 'fwd') camY = Math.max(camY - 20, -60);
         if (data.dir === 'back') camY = Math.min(camY + 20, 60);
       }
+      // Phone quit button
+      if (data.type === 'quit_game') exitGame();
     }
 
     // ============================================================
@@ -1016,15 +1019,16 @@
         ball.spinV = (Math.random() > 0.5 ? 1 : -1) * (0.08 + power * 0.06);
         ball.bounceT = 0;
 
-        // Wall mode: instant reflect
+        // Wall mode: instant reflect back from z=0
         if (currentMode === 'wall') {
           setTimeout(() => {
             if (GS.running) {
               ball.phase = 'incoming';
-              ball.vz = Math.abs(ball.vz);
+              ball.z = 0;
+              ball.vz = 0.010 + GS.streak * 0.0003;
               swingReceived = false;
             }
-          }, 250);
+          }, 300);
         }
 
         playHit();
@@ -1194,7 +1198,13 @@
     }
 
     function exitGame() {
-      location.reload();
+      GS.running = false;
+      cancelAnimationFrame(animId);
+      document.getElementById('gameover').classList.remove('show');
+      document.getElementById('game-container').style.display = 'none';
+      document.getElementById('lobby').style.display = 'flex';
+      // Tell phone to go back to test/menu screen
+      if (conn) conn.send({ type: 'show_menu' });
     }
 
     // ============================================================
@@ -1250,19 +1260,20 @@
           ball.bounceOff = 0;
         }
 
-        // CPU returns ball
-        if (ball.phase === 'outgoing' && ball.z <= 0.01) {
+        // CPU returns ball (z goes from player-side high ~0.7 down towards 0)
+        if (ball.phase === 'outgoing' && ball.z < 0.05) {
           ball.phase = 'incoming';
-          ball.vz = Math.abs(ball.vz) + 0.0008;
-          ball.vz = Math.min(ball.vz, 0.025);
-          ball.x = 0.3 + Math.random() * 0.4;
+          ball.z = 0;                   // reset to far end
+          ball.vz = 0.009 + GS.streak * 0.0004;  // speed up with rally
+          ball.vz = Math.min(ball.vz, 0.026);
+          ball.x = 0.28 + Math.random() * 0.44;
           ball.y = 0.35 + Math.random() * 0.16;
           ball.vx = (Math.random() - 0.5) * 0.002;
           ball.spinV = (Math.random() > 0.5 ? 1 : -1) * 0.07;
           ball.bounceT = 0;
-          playHit();
           swingReceived = false;
-          document.getElementById('speed-fill').style.width = Math.min((ball.vz / 0.025) * 100, 100) + '%';
+          playHit();
+          document.getElementById('speed-fill').style.width = Math.min((ball.vz / 0.026) * 100, 100) + '%';
         }
 
         const dispY = ball.y - (ball.bounceOff || 0);
@@ -1447,7 +1458,10 @@
       const tiltAngle = racketTiltX * 0.035;
       const tiltRise = racketTiltY * 1.8;
       const cx = W * 0.5 + racketTiltX * 7;
-      const baseY = H + 40 + tiltRise;
+      // Position base so that the racket head is visible in the 240px canvas
+      // The image is 260x320. We want the head to show from top of canvas.
+      // translate to (cx, H-20) so grip is partly off-screen at bottom
+      const baseY = H + 10 + Math.min(Math.max(tiltRise, -20), 20);
 
       rctx.save();
       rctx.translate(cx, baseY);

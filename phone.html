@@ -525,7 +525,7 @@
         <div class="cs-dot"></div>
         <span>接続中</span>
       </div>
-      <button class="quit-btn-small" onclick="location.reload()">やめる</button>
+      <button class="quit-btn-small" onclick="quitPlay()">やめる</button>
     </div>
 
     <div class="play-score-area">
@@ -645,6 +645,15 @@
       } else if (data.type === 'gameover') {
         score = data.score;
         updatePlayScore();
+        // Return to swing test screen so player can change mode
+        setTimeout(() => {
+          document.getElementById('screen-play').classList.remove('active');
+          document.getElementById('screen-test').classList.add('active');
+        }, 800);
+      } else if (data.type === 'show_menu') {
+        // PC returned to lobby – show test screen on phone too
+        document.getElementById('screen-play').classList.remove('active');
+        document.getElementById('screen-test').classList.add('active');
       }
     }
 
@@ -755,11 +764,19 @@
       sendMove(side);
     }
 
-    // Scroll (or two-finger swipe) = move forward / backward
+    // Scroll = move in any direction
     function onScrollMove(e) {
       e.preventDefault();
-      if (e.deltaY < -5) sendMove('fwd');
-      else if (e.deltaY > 5) sendMove('back');
+      const ax = Math.abs(e.deltaX), ay = Math.abs(e.deltaY);
+      if (ax > ay) {
+        // horizontal scroll → left/right
+        if (e.deltaX < -5) sendMove('left');
+        else if (e.deltaX > 5) sendMove('right');
+      } else {
+        // vertical scroll → forward/back
+        if (e.deltaY < -5) sendMove('fwd');
+        else if (e.deltaY > 5) sendMove('back');
+      }
     }
 
     function doSwing(power) {
@@ -799,6 +816,13 @@
     function goToPlay() {
       document.getElementById('screen-test').classList.remove('active');
       document.getElementById('screen-play').classList.add('active');
+    }
+
+    function quitPlay() {
+      // Tell PC to return to lobby, then show test screen
+      if (conn && conn.open) conn.send({ type: 'quit_game' });
+      document.getElementById('screen-play').classList.remove('active');
+      document.getElementById('screen-test').classList.add('active');
     }
 
     // ============================================================
