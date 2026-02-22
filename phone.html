@@ -4,17 +4,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>SMASH – Controller</title>
+  <title>SMASH – ラケット</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Orbitron:wght@700;900&display=swap');
 
     :root {
-      --neon: #00ff88;
-      --neon2: #00ccff;
-      --danger: #ff3355;
-      --gold: #ffd700;
-      --dark: #040c08;
+      --gold: #f5c842;
+      --green: #6ef0a0;
+      --danger: #e03030;
+      --dark: #0a0a0a;
     }
 
     * {
@@ -30,80 +29,185 @@
       overflow: hidden;
       background: var(--dark);
       color: #fff;
-      font-family: 'Rajdhani', sans-serif;
+      font-family: 'Noto Sans JP', sans-serif;
       user-select: none;
     }
 
-    body {
-      display: flex;
+    /* ===== SCREENS ===== */
+    .screen {
+      display: none;
+      position: fixed;
+      inset: 0;
       flex-direction: column;
       align-items: center;
-      justify-content: space-between;
-      padding: 32px 20px 28px;
-      background:
-        radial-gradient(ellipse at 50% 0%, #0d2b1a 0%, var(--dark) 65%),
-        repeating-linear-gradient(45deg, transparent, transparent 50px, rgba(0, 255, 136, 0.015) 50px, rgba(0, 255, 136, 0.015) 51px);
-      min-height: 100vh;
     }
 
-    /* TOP BAR */
-    .top-bar {
+    .screen.active {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      width: 100%;
     }
 
-    .brand {
+    /* ===== SWING TEST SCREEN ===== */
+    #screen-test {
+      justify-content: center;
+      gap: 24px;
+      padding: 32px 24px;
+      background: radial-gradient(ellipse at 50% 0%, #1a3020 0%, #0a0a0a 65%);
+    }
+
+    .test-title {
+      font-family: 'Orbitron', monospace;
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: var(--gold);
+      text-align: center;
+      letter-spacing: 0.1em;
+    }
+
+    .test-subtitle {
+      font-size: 0.8rem;
+      color: rgba(255, 255, 255, 0.5);
+      text-align: center;
+      line-height: 1.7;
+    }
+
+    .accel-display {
+      width: 100%;
+      max-width: 300px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .accel-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.3em;
+      color: rgba(255, 255, 255, 0.35);
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .swing-meter-wrap {
+      position: relative;
+      height: 16px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .swing-meter-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3a7 40%, var(--gold) 75%, var(--danger));
+      border-radius: 8px;
+      transition: width 0.04s;
+    }
+
+    .swing-meter-thresh {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 30%;
+      /* represents threshold */
+      width: 2px;
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    .swing-val {
+      font-family: 'Orbitron', monospace;
+      font-size: 1.8rem;
+      font-weight: 900;
+      text-align: center;
+      color: #fff;
+      margin: 6px 0;
+      letter-spacing: 0.05em;
+    }
+
+    .swing-status {
+      text-align: center;
+      font-size: 0.75rem;
+      color: rgba(255, 255, 255, 0.4);
+      min-height: 1.2em;
+    }
+
+    .swing-status.detected {
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    .test-ok-btn {
+      padding: 14px 40px;
+      background: var(--gold);
+      color: #111;
+      border: none;
+      border-radius: 10px;
       font-family: 'Orbitron', monospace;
       font-weight: 900;
-      font-size: 1.2rem;
-      color: var(--neon);
-      letter-spacing: 0.15em;
-      text-shadow: 0 0 16px #00ff8877;
+      font-size: 0.9rem;
+      letter-spacing: 0.12em;
+      cursor: pointer;
+      box-shadow: 0 0 24px rgba(245, 200, 66, 0.4);
+      transition: all 0.2s;
     }
 
-    .conn-pill {
+    .test-ok-btn:active {
+      transform: scale(0.96);
+    }
+
+    .perm-btn {
+      padding: 12px 28px;
+      background: transparent;
+      border: 2px solid var(--green);
+      color: var(--green);
+      border-radius: 8px;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+    }
+
+    .conn-status {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.6rem;
+      letter-spacing: 0.15em;
+      padding: 6px 14px;
+      border-radius: 20px;
       display: flex;
       align-items: center;
       gap: 7px;
-      padding: 5px 14px;
-      border-radius: 20px;
-      font-family: 'Orbitron', monospace;
-      font-size: 0.6rem;
-      letter-spacing: 0.12em;
-      transition: all 0.4s;
     }
 
-    .conn-pill.waiting {
-      background: rgba(255, 215, 0, 0.12);
-      border: 1px solid rgba(255, 215, 0, 0.35);
+    .conn-status.waiting {
+      background: rgba(245, 200, 66, 0.1);
+      border: 1px solid rgba(245, 200, 66, 0.4);
       color: var(--gold);
     }
 
-    .conn-pill.connected {
-      background: rgba(0, 255, 136, 0.1);
-      border: 1px solid rgba(0, 255, 136, 0.4);
-      color: var(--neon);
+    .conn-status.connected {
+      background: rgba(110, 240, 160, 0.1);
+      border: 1px solid rgba(110, 240, 160, 0.4);
+      color: var(--green);
     }
 
-    .conn-pill.error {
-      background: rgba(255, 51, 85, 0.12);
-      border: 1px solid rgba(255, 51, 85, 0.35);
+    .conn-status.error {
+      background: rgba(224, 48, 48, 0.1);
+      border: 1px solid rgba(224, 48, 48, 0.4);
       color: var(--danger);
     }
 
-    .cpill-dot {
-      width: 7px;
-      height: 7px;
+    .cs-dot {
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       background: currentColor;
-      animation: blink 1.4s infinite;
+      animation: blink 1.2s infinite;
     }
 
-    .conn-pill.connected .cpill-dot {
+    .conn-status.connected .cs-dot {
       animation: none;
-      box-shadow: 0 0 6px currentColor;
+      box-shadow: 0 0 5px currentColor;
     }
 
     @keyframes blink {
@@ -118,171 +222,181 @@
       }
     }
 
-    /* SCORE */
-    .score-section {
-      text-align: center;
+    /* ===== PLAY SCREEN ===== */
+    #screen-play {
+      justify-content: flex-start;
+      padding: 0;
+      overflow: hidden;
     }
 
-    .score-lbl {
-      font-family: 'Orbitron', monospace;
-      font-size: 0.55rem;
-      letter-spacing: 0.4em;
-      color: rgba(255, 255, 255, 0.35);
-      margin-bottom: 2px;
+    #racket-bg {
+      position: absolute;
+      inset: 0;
+      background-image: url('racket.png');
+      background-size: cover;
+      background-position: center bottom;
+      /* Darken to not be too distracting */
+      filter: brightness(0.6) saturate(0.9);
+      transition: transform 0.08s ease-out, filter 0.15s;
+      transform-origin: bottom center;
     }
 
-    .score-num {
+    #racket-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5) 0%, transparent 35%, transparent 60%, rgba(0, 0, 0, 0.7) 100%);
+    }
+
+    /* Top HUD */
+    .play-top {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(6px);
+      z-index: 10;
+    }
+
+    .play-brand {
       font-family: 'Orbitron', monospace;
       font-weight: 900;
-      font-size: 3.5rem;
-      line-height: 1;
-      color: var(--neon);
-      text-shadow: 0 0 24px #00ff8866;
-      transition: color 0.3s;
+      font-size: 1rem;
+      color: var(--gold);
+      letter-spacing: 0.15em;
     }
 
-    .score-num.hit {
-      color: #fff;
-      text-shadow: 0 0 30px #00ff88, 0 0 60px #00ff8844;
+    .quit-btn-small {
+      background: transparent;
+      border: 1px solid rgba(255, 100, 100, 0.5);
+      color: rgba(255, 120, 120, 0.8);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      font-family: 'Noto Sans JP', sans-serif;
     }
 
-    .score-num.miss {
-      color: var(--danger);
-      text-shadow: 0 0 20px #ff335577;
-    }
-
-    /* SWING BUTTON */
-    .swing-wrap {
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .swing-ring {
+    /* Score area */
+    .play-score-area {
       position: absolute;
-      border-radius: 50%;
-      border: 2px solid var(--neon);
-      opacity: 0;
-      animation: none;
+      top: 56px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      z-index: 10;
     }
 
-    .swing-btn {
-      width: 200px;
-      height: 200px;
+    .play-score-num {
+      font-family: 'Orbitron', monospace;
+      font-size: 3rem;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1;
+      text-shadow: 0 0 20px rgba(245, 200, 66, 0.4), 0 4px 16px rgba(0, 0, 0, 0.8);
+      transition: color 0.2s;
+    }
+
+    .play-score-num.hit {
+      color: var(--gold);
+    }
+
+    .play-score-num.miss {
+      color: var(--danger);
+    }
+
+    .play-score-lbl {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.5rem;
+      letter-spacing: 0.4em;
+      color: rgba(255, 255, 255, 0.35);
+      margin-top: 3px;
+    }
+
+    /* Big swing indicator */
+    .swing-pulse {
+      position: absolute;
+      bottom: 150px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 180px;
+      height: 180px;
       border-radius: 50%;
-      border: 3px solid rgba(0, 255, 136, 0.35);
-      background: radial-gradient(circle at 40% 35%, rgba(0, 255, 136, 0.12) 0%, rgba(0, 255, 136, 0.03) 60%, transparent 100%);
+      border: 3px solid rgba(255, 255, 255, 0.25);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      cursor: pointer;
+      z-index: 10;
       transition: all 0.12s;
-      position: relative;
-      overflow: hidden;
+      cursor: pointer;
+      background: radial-gradient(circle at 40% 35%, rgba(255, 255, 255, 0.08), transparent 70%);
     }
 
-    .swing-btn::before {
-      content: '';
+    .swing-pulse.ready {
+      border-color: var(--gold);
+      box-shadow: 0 0 32px rgba(245, 200, 66, 0.45), inset 0 0 24px rgba(245, 200, 66, 0.1);
+    }
+
+    .swing-pulse.swung {
+      transform: translateX(-50%) scale(0.9);
+      border-color: #fff;
+      box-shadow: 0 0 50px rgba(255, 255, 255, 0.5);
+    }
+
+    .swing-emoji {
+      font-size: 3.8rem;
+      pointer-events: none;
+    }
+
+    .swing-hint {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.6rem;
+      letter-spacing: 0.25em;
+      color: rgba(255, 255, 255, 0.5);
+      margin-top: 8px;
+      pointer-events: none;
+    }
+
+    /* Power bar */
+    .power-bar-wrap {
       position: absolute;
-      inset: -3px;
-      border-radius: 50%;
-      background: conic-gradient(var(--neon), transparent, var(--neon));
-      opacity: 0;
-      transition: opacity 0.3s;
-      animation: spinBorder 2s linear infinite;
+      bottom: 90px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 200px;
+      z-index: 10;
     }
 
-    .swing-btn.ready::before {
-      opacity: 0.4;
-    }
-
-    @keyframes spinBorder {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    .swing-btn.hit-anim {
-      border-color: var(--neon);
-      box-shadow: 0 0 40px rgba(0, 255, 136, 0.6), inset 0 0 30px rgba(0, 255, 136, 0.15);
-      transform: scale(0.93);
-    }
-
-    .swing-btn.miss-anim {
-      border-color: var(--danger);
-      box-shadow: 0 0 30px rgba(255, 51, 85, 0.5);
-    }
-
-    .racket-emoji {
-      font-size: 4.5rem;
-      transition: transform 0.12s;
-      pointer-events: none;
-    }
-
-    .swing-btn.hit-anim .racket-emoji {
-      transform: rotate(-25deg) scale(1.1);
-    }
-
-    .swing-label {
+    .power-bar-label {
       font-family: 'Orbitron', monospace;
-      font-size: 0.65rem;
+      font-size: 0.5rem;
       letter-spacing: 0.3em;
-      color: rgba(255, 255, 255, 0.45);
-      margin-top: 10px;
-      pointer-events: none;
+      color: rgba(255, 255, 255, 0.35);
+      text-align: center;
+      margin-bottom: 5px;
     }
 
-    /* ACCEL METER */
-    .accel-section {
-      width: 100%;
-      max-width: 260px;
-    }
-
-    .accel-header {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 7px;
-      font-family: 'Orbitron', monospace;
-      font-size: 0.55rem;
-      letter-spacing: 0.2em;
-      color: rgba(255, 255, 255, 0.3);
-    }
-
-    .accel-track {
-      width: 100%;
-      height: 5px;
-      background: rgba(255, 255, 255, 0.06);
+    .power-bar-track {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
       border-radius: 3px;
       overflow: hidden;
     }
 
-    .accel-fill {
+    .power-bar-fill {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, var(--neon), var(--gold), var(--danger));
+      background: linear-gradient(90deg, #3a7 40%, var(--gold) 75%, var(--danger));
       border-radius: 3px;
-      transition: width 0.04s;
+      transition: width 0.05s;
     }
 
-    /* PERMISSION */
-    #perm-btn {
-      padding: 14px 32px;
-      background: var(--neon);
-      color: var(--dark);
-      border: none;
-      font-family: 'Orbitron', monospace;
-      font-weight: 900;
-      font-size: 0.8rem;
-      letter-spacing: 0.15em;
-      border-radius: 6px;
-      cursor: pointer;
-      box-shadow: 0 0 20px rgba(0, 255, 136, 0.4);
-      display: none;
-    }
-
-    /* RESULT FLASH */
+    /* Result flash */
     #result-flash {
       position: fixed;
       inset: 0;
@@ -290,67 +404,142 @@
       align-items: center;
       justify-content: center;
       font-family: 'Orbitron', monospace;
+      font-size: 4.5rem;
       font-weight: 900;
-      font-size: 4rem;
       pointer-events: none;
       opacity: 0;
       z-index: 100;
       letter-spacing: 0.05em;
+    }
+
+    /* Tilt indicator dots */
+    #tilt-indicator {
+      position: absolute;
+      bottom: 60px;
+      right: 20px;
+      z-index: 10;
+      opacity: 0.5;
+    }
+
+    .tilt-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.45rem;
+      letter-spacing: 0.2em;
+      color: rgba(255, 255, 255, 0.4);
+      text-align: right;
+      margin-bottom: 4px;
+    }
+
+    .tilt-bar {
+      width: 60px;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      margin: 3px 0;
+      overflow: visible;
+      position: relative;
+    }
+
+    .tilt-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--gold);
+      position: absolute;
+      top: -3px;
+      left: 50%;
+      transform: translateX(-50%);
+      transition: left 0.08s;
     }
   </style>
 </head>
 
 <body>
 
-  <div class="top-bar">
-    <div class="brand">🎾 SMASH</div>
-    <button onclick="location.reload()"
-      style="background:transparent; border:1px solid var(--danger); color:var(--danger); border-radius:4px; padding:4px 8px; font-family:'Rajdhani', sans-serif; font-weight:bold; cursor:pointer;">やめる</button>
-    <div class="conn-pill waiting" id="conn-pill">
-      <div class="cpill-dot"></div>
+  <!-- ===== SWING TEST SCREEN ===== -->
+  <div id="screen-test" class="screen active">
+    <div class="conn-status waiting" id="conn-pill">
+      <div class="cs-dot"></div>
       <span id="conn-text">接続中...</span>
     </div>
-  </div>
 
-  <div class="score-section">
-    <div class="score-lbl">SCORE</div>
-    <div class="score-num" id="score-num">0</div>
-  </div>
+    <div class="test-title">🎾 素振りテスト</div>
+    <div class="test-subtitle">
+      スマホを振るとPCから音が鳴ります。<br>
+      ゲームを開始する前に動作を確認しましょう。
+    </div>
 
-  <div class="swing-wrap">
-    <div class="swing-btn" id="swing-btn" ontouchstart="onSwingTouch(event)" onclick="onSwingClick()">
-      <div class="racket-emoji">🎾</div>
-      <div class="swing-label">SWING!</div>
+    <div class="accel-display">
+      <div class="accel-label">SWING POWER METER</div>
+      <div class="swing-meter-wrap">
+        <div class="swing-meter-fill" id="test-meter-fill"></div>
+        <div class="swing-meter-thresh"></div>
+      </div>
+      <div class="swing-val" id="test-val">0.0</div>
+      <div class="swing-status" id="test-status">スマホを振ってみてください</div>
+    </div>
+
+    <button class="perm-btn" id="perm-btn" style="display:none" onclick="reqPermission()">
+      📡 センサーを有効化 (iOS)
+    </button>
+
+    <button class="test-ok-btn" onclick="goToPlay()">
+      ✓ テスト完了 → プレイへ
+    </button>
+
+    <div style="font-size:0.65rem;color:rgba(255,255,255,0.25);text-align:center;">
+      ボタンでタップしてもプレイできます
     </div>
   </div>
 
-  <div class="accel-section">
-    <div class="accel-header">
-      <span>SWING POWER</span>
-      <span id="accel-val-txt">0.0</span>
+  <!-- ===== PLAY SCREEN ===== -->
+  <div id="screen-play" class="screen">
+    <div id="racket-bg"></div>
+    <div id="racket-overlay"></div>
+
+    <div class="play-top">
+      <div class="play-brand">🎾 SMASH</div>
+      <div class="conn-status connected" id="play-conn-pill" style="font-size:0.5rem;padding:4px 10px;">
+        <div class="cs-dot"></div>
+        <span>接続中</span>
+      </div>
+      <button class="quit-btn-small" onclick="location.reload()">やめる</button>
     </div>
-    <div class="accel-track">
-      <div class="accel-fill" id="accel-fill"></div>
+
+    <div class="play-score-area">
+      <div class="play-score-lbl">SCORE</div>
+      <div class="play-score-num" id="play-score">0</div>
+    </div>
+
+    <div class="swing-pulse" id="swing-btn" ontouchstart="onSwingTouch(event)" onclick="onSwingClick()">
+      <div class="swing-emoji">🎾</div>
+      <div class="swing-hint">SWING!</div>
+    </div>
+
+    <div class="power-bar-wrap">
+      <div class="power-bar-label">POWER</div>
+      <div class="power-bar-track">
+        <div class="power-bar-fill" id="play-power-fill"></div>
+      </div>
+    </div>
+
+    <div id="tilt-indicator">
+      <div class="tilt-label">TILT</div>
+      <div class="tilt-bar">
+        <div class="tilt-dot" id="tilt-x-dot"></div>
+      </div>
+      <div class="tilt-bar">
+        <div class="tilt-dot" id="tilt-y-dot"></div>
+      </div>
     </div>
   </div>
-
-  <button id="perm-btn" onclick="reqPermission()">📡 センサーを有効化</button>
 
   <div id="result-flash"></div>
 
   <script>
-    // ======= SOUND SYNTHESIZER (DEPRECATED, now redirected to PC) =======
-    // Function kept empty to prevent old calls matching 'initAudio' from breaking,
-    // though we simply trigger PC now.
-    function initAudio() { }
-
-    function playSound(type) {
-      if (type === 'swing') {
-        if (conn && conn.open) conn.send({ type: 'trigger_swing_sound' });
-      }
-    }
-
-    // ======= PEER CONNECT =======
+    // ============================================================
+    //  PEER & STATE
+    // ============================================================
     const params = new URLSearchParams(location.search);
     const tvPeerId = params.get('peer');
     let peer, conn;
@@ -358,12 +547,15 @@
     let cooldown = false;
     let motionActive = false;
     let lastMag = 0;
-    const SWING_THRESHOLD = 22;
+    const SWING_THRESHOLD = 15;     // Raw magnitude threshold
+    let swingDetectedInTest = false;
 
+    // ============================================================
+    //  PEER INIT
+    // ============================================================
     function initPeer() {
       if (!tvPeerId) {
-        setConn('error', 'QRコードから開いてください');
-        document.getElementById('perm-btn').style.display = 'block';
+        setConn('error', 'QRコードから接続してください');
         initMotion();
         return;
       }
@@ -376,7 +568,7 @@
       peer.on('open', () => {
         conn = peer.connect(tvPeerId);
         conn.on('open', () => {
-          setConn('connected', '接続完了 ✓');
+          setConn('connected', '✓ 接続完了');
           initMotion();
         });
         conn.on('data', onTVData);
@@ -385,45 +577,40 @@
       });
 
       peer.on('error', () => {
-        setConn('error', '接続失敗');
-        // Still init motion for local use
+        setConn('error', '接続失敗 – オフラインモード');
         initMotion();
       });
     }
 
     function setConn(state, text) {
-      const pill = document.getElementById('conn-pill');
-      const txt = document.getElementById('conn-text');
-      pill.className = 'conn-pill ' + state;
-      txt.textContent = text;
+      ['conn-pill'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.className = 'conn-status ' + state; el.querySelector('span').textContent = text; }
+      });
     }
 
     function onTVData(data) {
       if (data.type === 'result') {
         if (data.result === 'hit') {
           score = data.score;
-          flashScore(true);
-          animSwingBtn('hit-anim');
-          vibrate([30, 20, 80]);
+          flashResult(true);
+          animSwing('swung');
         } else if (data.result === 'miss') {
-          flashScore(false);
-          animSwingBtn('miss-anim');
-          vibrate([200]);
+          flashResult(false);
         }
+        updatePlayScore();
       } else if (data.type === 'gameover') {
         score = data.score;
-        document.getElementById('score-num').textContent = score;
+        updatePlayScore();
       }
     }
 
-    // ======= MOTION =======
+    // ============================================================
+    //  MOTION
+    // ============================================================
     function initMotion() {
-      if (typeof DeviceMotionEvent === 'undefined') {
-        document.getElementById('perm-btn').style.display = 'none';
-        return;
-      }
+      if (typeof DeviceMotionEvent === 'undefined') return;
       if (typeof DeviceMotionEvent.requestPermission === 'function') {
-        // iOS
         document.getElementById('perm-btn').style.display = 'block';
       } else {
         enableMotion();
@@ -441,44 +628,65 @@
 
     function enableMotion() {
       motionActive = true;
-      let lastX = null, lastY = null, lastZ = null;
-      window.addEventListener('devicemotion', e => {
-        const a = e.accelerationIncludingGravity || e.acceleration;
-        if (!a) return;
-
-        if (lastX === null) {
-          lastX = a.x; lastY = a.y; lastZ = a.z;
-          return;
-        }
-
-        const dx = a.x - lastX;
-        const dy = a.y - lastY;
-        const dz = a.z - lastZ;
-        lastX = a.x; lastY = a.y; lastZ = a.z;
-
-        const mag = Math.sqrt(dx * dx + dy * dy + dz * dz) * 1.5;
-        lastMag = mag;
-
-        const pct = Math.min((mag / 50) * 100, 100);
-        document.getElementById('accel-fill').style.width = pct + '%';
-        document.getElementById('accel-val-txt').textContent = mag.toFixed(1);
-
-        // Add ready glow when sensor is active
-        document.getElementById('swing-btn').classList.toggle('ready', mag > 5);
-
-        if (mag > 15 && !cooldown) {
-          const power = Math.min(mag / 50, 1);
-          doSwing(power);
-        }
-      }, { passive: true });
+      window.addEventListener('devicemotion', onMotion, { passive: true });
+      window.addEventListener('deviceorientation', onOrientation, { passive: true });
     }
 
-    // ======= SWING =======
+    function onMotion(e) {
+      // Use raw accelerationIncludingGravity (reliable across all Android/iOS)
+      const a = e.accelerationIncludingGravity || e.acceleration;
+      if (!a) return;
+
+      const mag = Math.sqrt((a.x || 0) ** 2 + (a.y || 0) ** 2 + (a.z || 0) ** 2);
+      lastMag = mag;
+
+      const pct = Math.min((mag / 50) * 100, 100);
+
+      // Update test screen
+      const testFill = document.getElementById('test-meter-fill');
+      const testVal = document.getElementById('test-val');
+      const testSt = document.getElementById('test-status');
+      if (testFill) testFill.style.width = pct + '%';
+      if (testVal) testVal.textContent = mag.toFixed(1);
+
+      // Update play screen
+      const playFill = document.getElementById('play-power-fill');
+      if (playFill) playFill.style.width = pct + '%';
+
+      // Ready glow
+      document.getElementById('swing-btn')?.classList.toggle('ready', mag > 8);
+
+      if (mag > SWING_THRESHOLD && !cooldown) {
+        if (!swingDetectedInTest) {
+          swingDetectedInTest = true;
+          if (testSt) { testSt.textContent = '✓ 振り検出OK！PCから音が鳴りましたか？'; testSt.className = 'swing-status detected'; }
+        }
+        doSwing(Math.min(mag / 50, 1));
+      }
+    }
+
+    function onOrientation(e) {
+      // Tilt racket background image
+      const bg = document.getElementById('racket-bg');
+      if (!bg) return;
+      const beta = Math.max(-30, Math.min(30, e.beta - 45));   // forward/backward tilt
+      const gamma = Math.max(-25, Math.min(25, e.gamma || 0));  // left/right tilt
+      bg.style.transform = `rotate(${gamma * 0.4}deg) translateY(${beta * 0.5}px)`;
+
+      // Tilt dots
+      const tx = document.getElementById('tilt-x-dot');
+      const ty = document.getElementById('tilt-y-dot');
+      if (tx) tx.style.left = (50 + gamma * 1.5) + '%';
+      if (ty) ty.style.left = (50 + beta * 1.0) + '%';
+    }
+
+    // ============================================================
+    //  SWING
+    // ============================================================
     function onSwingTouch(e) {
       e.preventDefault();
       if (!cooldown) doSwing(motionActive ? Math.min(lastMag / 40, 1) : 0.75);
     }
-
     function onSwingClick() {
       if (!cooldown) doSwing(0.75);
     }
@@ -486,58 +694,65 @@
     function doSwing(power) {
       if (cooldown) return;
       cooldown = true;
-      playSound('swing');
 
-      // Send to TV
+      // Tell PC to play swing sound
       if (conn && conn.open) {
+        conn.send({ type: 'trigger_swing_sound' });
         conn.send({ type: 'swing', power });
       }
 
-      animSwingBtn('hit-anim');
-      vibrate([40, 15, 60]);
+      animSwing('swung');
+      vibrate([40, 20, 70]);
+
+      // Flicker racket bg
+      const bg = document.getElementById('racket-bg');
+      if (bg) { bg.style.filter = 'brightness(1.2) saturate(1.3)'; setTimeout(() => { bg.style.filter = 'brightness(0.6) saturate(0.9)'; }, 120); }
 
       setTimeout(() => {
         cooldown = false;
-        document.getElementById('swing-btn').classList.remove('hit-anim', 'miss-anim');
+        document.getElementById('swing-btn')?.classList.remove('swung');
       }, 380);
     }
 
-    function animSwingBtn(cls) {
+    function animSwing(cls) {
       const btn = document.getElementById('swing-btn');
-      btn.classList.remove('hit-anim', 'miss-anim');
-      void btn.offsetWidth; // reflow
+      if (!btn) return;
+      btn.classList.remove('swung');
+      void btn.offsetWidth;
       btn.classList.add(cls);
     }
 
+    // ============================================================
+    //  NAVIGATION
+    // ============================================================
+    function goToPlay() {
+      document.getElementById('screen-test').classList.remove('active');
+      document.getElementById('screen-play').classList.add('active');
+    }
 
-
-    // ======= FEEDBACK =======
-    function flashScore(hit) {
+    // ============================================================
+    //  FEEDBACK
+    // ============================================================
+    function flashResult(hit) {
       const el = document.getElementById('result-flash');
-      el.textContent = hit ? 'HIT!' : 'MISS';
-      el.style.color = hit ? '#00ff88' : '#ff3355';
-      el.style.textShadow = `0 0 40px ${hit ? '#00ff88' : '#ff3355'}`;
+      el.textContent = hit ? 'ナイス！' : 'ミス';
+      el.style.color = hit ? '#f5c842' : '#e03030';
+      el.style.textShadow = `0 0 40px ${hit ? '#f5c842' : '#e03030'}`;
       el.style.opacity = '1';
       el.style.transition = 'none';
-
-      const sn = document.getElementById('score-num');
-      sn.textContent = score;
-      sn.className = 'score-num ' + (hit ? 'hit' : 'miss');
-      setTimeout(() => { sn.className = 'score-num'; }, 500);
-
-      setTimeout(() => {
-        el.style.transition = 'opacity 0.4s';
-        el.style.opacity = '0';
-      }, 500);
+      setTimeout(() => { el.style.transition = 'opacity 0.4s'; el.style.opacity = '0'; }, 550);
     }
 
-    function vibrate(pattern) {
-      if (navigator.vibrate) navigator.vibrate(pattern);
+    function updatePlayScore() {
+      const el = document.getElementById('play-score');
+      if (el) el.textContent = score;
     }
 
-    // ======= INIT =======
-    document.body.addEventListener('touchstart', initAudio, { once: true });
-    document.body.addEventListener('click', initAudio, { once: true });
+    function vibrate(p) { if (navigator.vibrate) navigator.vibrate(p); }
+
+    // ============================================================
+    //  INIT
+    // ============================================================
     initPeer();
   </script>
 </body>
