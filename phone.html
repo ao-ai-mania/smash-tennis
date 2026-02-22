@@ -304,6 +304,8 @@
 
   <div class="top-bar">
     <div class="brand">🎾 SMASH</div>
+    <button onclick="location.reload()"
+      style="background:transparent; border:1px solid var(--danger); color:var(--danger); border-radius:4px; padding:4px 8px; font-family:'Rajdhani', sans-serif; font-weight:bold; cursor:pointer;">やめる</button>
     <div class="conn-pill waiting" id="conn-pill">
       <div class="cpill-dot"></div>
       <span id="conn-text">接続中...</span>
@@ -481,10 +483,22 @@
 
     function enableMotion() {
       motionActive = true;
+      let lastX = null, lastY = null, lastZ = null;
       window.addEventListener('devicemotion', e => {
         const a = e.accelerationIncludingGravity || e.acceleration;
         if (!a) return;
-        const mag = Math.sqrt((a.x || 0) ** 2 + (a.y || 0) ** 2 + (a.z || 0) ** 2);
+
+        if (lastX === null) {
+          lastX = a.x; lastY = a.y; lastZ = a.z;
+          return;
+        }
+
+        const dx = a.x - lastX;
+        const dy = a.y - lastY;
+        const dz = a.z - lastZ;
+        lastX = a.x; lastY = a.y; lastZ = a.z;
+
+        const mag = Math.sqrt(dx * dx + dy * dy + dz * dz) * 1.5;
         lastMag = mag;
 
         const pct = Math.min((mag / 50) * 100, 100);
@@ -494,7 +508,7 @@
         // Add ready glow when sensor is active
         document.getElementById('swing-btn').classList.toggle('ready', mag > 5);
 
-        if (mag > SWING_THRESHOLD && !cooldown) {
+        if (mag > 15 && !cooldown) {
           const power = Math.min(mag / 50, 1);
           doSwing(power);
         }
@@ -563,6 +577,8 @@
     }
 
     // ======= INIT =======
+    document.body.addEventListener('touchstart', initAudio, { once: true });
+    document.body.addEventListener('click', initAudio, { once: true });
     initPeer();
   </script>
 </body>

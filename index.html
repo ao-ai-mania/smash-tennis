@@ -534,7 +534,8 @@
 
       <div class="theme-panel">
         <div class="theme-info">LANDSCAPE</div>
-        <button class="theme-btn active" onclick="setTheme('neon')" id="theme-neon">Neon Court</button>
+        <button class="theme-btn active" onclick="setTheme('japan')" id="theme-japan">Japan Scenery</button>
+        <button class="theme-btn" onclick="setTheme('neon')" id="theme-neon">Neon Court</button>
         <button class="theme-btn" onclick="setTheme('cyber')" id="theme-cyber">Cyber Space</button>
         <button class="theme-btn" onclick="setTheme('sunset')" id="theme-sunset">Sunset Beach</button>
       </div>
@@ -578,6 +579,8 @@
           <div class="life-dot" id="l1"></div>
           <div class="life-dot" id="l0"></div>
         </div>
+        <button id="quit-btn" onclick="location.reload()"
+          style="margin-top:10px; padding:6px 12px; background:transparent; border:1px solid var(--danger); color:var(--danger); border-radius:4px; font-family:'Rajdhani', sans-serif; font-weight:bold; cursor:pointer; width:100%;">やめる</button>
       </div>
     </div>
 
@@ -725,6 +728,15 @@
 
     // ====== THEMES ======
     const themes = {
+      japan: {
+        skyTop: '#0a1128', skyBot: '#1c0f2a',
+        horizon: 'rgba(255,105,180,0.6)',
+        courtTop: '#2a3a29', courtMid: '#1e2b1d', courtBot: '#111a10',
+        lines: 'rgba(255,183,197,0.4)',
+        netGlow: '#ffb7c5',
+        starBase: '#ffb7c5', starAlt: '#ff69b4',
+        particleMain: '#ff69b4'
+      },
       neon: {
         skyTop: '#020b0a', skyBot: '#061a12',
         horizon: 'rgba(0,255,136,0.35)',
@@ -753,7 +765,7 @@
         particleMain: '#ffd700'
       }
     };
-    let currentTheme = 'neon';
+    let currentTheme = 'japan';
 
     function setTheme(name) {
       currentTheme = name;
@@ -840,14 +852,15 @@
         const bonus = Math.floor(power * 25);
         gs.score += 10 + bonus + gs.streak * 5;
         gs.streak++;
-        ball.visible = false;
-        ball.phase = 'hit';
+
+        ball.phase = 'outgoing';
+        ball.vz = -Math.min(Math.abs(ball.vz) * 1.05, 0.035);
+
         playSound('hit');
         spawnParticles(ball.x * C.width, ball.y * C.height, themes[currentTheme].particleMain);
         showMsg(hitMsg(), themes[currentTheme].particleMain);
         updateHUD();
         if (conn) conn.send({ type: 'result', result: 'hit', score: gs.score });
-        setTimeout(serve, 1100);
       } else if (ball.z > 0.25) {
         showMsg('EARLY!', '#ffd700');
       }
@@ -942,6 +955,18 @@
         ball.x += (0.5 - ball.x) * 0.004;
         ball.y += (0.44 - ball.y) * 0.004;
 
+        if (ball.phase === 'outgoing' && ball.z < 0) {
+          // CPU Hit
+          ball.phase = 'incoming';
+          ball.vz = Math.abs(ball.vz) + 0.0005;
+          ball.x = 0.38 + Math.random() * 0.24;
+          ball.y = 0.36 + Math.random() * 0.16;
+          playSound('hit');
+          spawnParticles((0.5) * C.width, (H * 0.44), themes[currentTheme].particleMain);
+          swingReceived = false;
+          document.getElementById('speed-fill').style.width = Math.min((ball.vz / 0.035) * 100, 100) + '%';
+        }
+
         const bx = ball.x * C.width;
         const by = ball.y * C.height;
         const bs = 5 + ball.z * 90;
@@ -958,7 +983,7 @@
         ctx.restore();
 
         // Zone glow when near
-        if (ball.z > 0.55) {
+        if (ball.phase === 'incoming' && ball.z > 0.55) {
           sweetZoneActive = true;
           const pulse = 0.3 + Math.sin(Date.now() * 0.025) * 0.2;
           ctx.save();
@@ -999,7 +1024,7 @@
         ctx.restore();
 
         // Hit ring indicator
-        if (ball.z > 0.5) {
+        if (ball.phase === 'incoming' && ball.z > 0.5) {
           const ringA = Math.min((ball.z - 0.5) * 2, 0.7);
           ctx.save();
           ctx.globalAlpha = ringA;
@@ -1013,7 +1038,7 @@
           ctx.restore();
         }
 
-        if (ball.z > 1.08) ballMissed();
+        if (ball.phase === 'incoming' && ball.z > 1.08) ballMissed();
       }
 
       // Particles
@@ -1116,6 +1141,46 @@
       hg.addColorStop(1, 'transparent');
       ctx.fillStyle = hg;
       ctx.fillRect(0, hY - 40, W, 70);
+
+      if (currentTheme === 'japan') {
+        const fpX = W * 0.5;
+        const fpY = hY;
+        ctx.save();
+        // Mt Fuji
+        ctx.fillStyle = '#14142f';
+        ctx.beginPath();
+        ctx.moveTo(fpX - W * 0.25, fpY);
+        ctx.lineTo(fpX, fpY - H * 0.20);
+        ctx.lineTo(fpX + W * 0.25, fpY);
+        ctx.fill();
+        // Snow cap
+        ctx.fillStyle = '#eef3f8';
+        ctx.beginPath();
+        ctx.moveTo(fpX - W * 0.08, fpY - H * 0.136);
+        ctx.lineTo(fpX, fpY - H * 0.20);
+        ctx.lineTo(fpX + W * 0.08, fpY - H * 0.136);
+        ctx.fill();
+
+        // Torii gate silhouette
+        ctx.strokeStyle = '#8b0000';
+        ctx.lineWidth = 14;
+        ctx.lineCap = 'round';
+        const tx = W * 0.85;
+        ctx.beginPath();
+        ctx.moveTo(tx - 40, fpY - 80); ctx.lineTo(tx + 40, fpY - 80); // top rail
+        ctx.stroke();
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(tx - 30, fpY - 65); ctx.lineTo(tx + 30, fpY - 65); // lower rail
+        ctx.stroke();
+        ctx.lineWidth = 12;
+        ctx.lineCap = 'butt';
+        ctx.beginPath();
+        ctx.moveTo(tx - 20, fpY); ctx.lineTo(tx - 20, fpY - 90); // left post
+        ctx.moveTo(tx + 20, fpY); ctx.lineTo(tx + 20, fpY - 90); // right post
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // Court
       const cg = ctx.createLinearGradient(0, H * 0.5, 0, H);
