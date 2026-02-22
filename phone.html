@@ -1,451 +1,570 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>SMASH – Controller</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap');
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>SMASH – Controller</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap');
 
-:root {
-  --neon: #00ff88;
-  --neon2: #00ccff;
-  --danger: #ff3355;
-  --gold: #ffd700;
-  --dark: #040c08;
-}
+    :root {
+      --neon: #00ff88;
+      --neon2: #00ccff;
+      --danger: #ff3355;
+      --gold: #ffd700;
+      --dark: #040c08;
+    }
 
-* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
 
-html, body {
-  height: 100%;
-  overflow: hidden;
-  background: var(--dark);
-  color: #fff;
-  font-family: 'Rajdhani', sans-serif;
-  user-select: none;
-}
+    html,
+    body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--dark);
+      color: #fff;
+      font-family: 'Rajdhani', sans-serif;
+      user-select: none;
+    }
 
-body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  padding: 32px 20px 28px;
-  background:
-    radial-gradient(ellipse at 50% 0%, #0d2b1a 0%, var(--dark) 65%),
-    repeating-linear-gradient(45deg, transparent, transparent 50px, rgba(0,255,136,0.015) 50px, rgba(0,255,136,0.015) 51px);
-  min-height: 100vh;
-}
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 32px 20px 28px;
+      background:
+        radial-gradient(ellipse at 50% 0%, #0d2b1a 0%, var(--dark) 65%),
+        repeating-linear-gradient(45deg, transparent, transparent 50px, rgba(0, 255, 136, 0.015) 50px, rgba(0, 255, 136, 0.015) 51px);
+      min-height: 100vh;
+    }
 
-/* TOP BAR */
-.top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
+    /* TOP BAR */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
 
-.brand {
-  font-family: 'Orbitron', monospace;
-  font-weight: 900;
-  font-size: 1.2rem;
-  color: var(--neon);
-  letter-spacing: 0.15em;
-  text-shadow: 0 0 16px #00ff8877;
-}
+    .brand {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: 1.2rem;
+      color: var(--neon);
+      letter-spacing: 0.15em;
+      text-shadow: 0 0 16px #00ff8877;
+    }
 
-.conn-pill {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 14px;
-  border-radius: 20px;
-  font-family: 'Orbitron', monospace;
-  font-size: 0.6rem;
-  letter-spacing: 0.12em;
-  transition: all 0.4s;
-}
+    .conn-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.6rem;
+      letter-spacing: 0.12em;
+      transition: all 0.4s;
+    }
 
-.conn-pill.waiting { background: rgba(255,215,0,0.12); border: 1px solid rgba(255,215,0,0.35); color: var(--gold); }
-.conn-pill.connected { background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.4); color: var(--neon); }
-.conn-pill.error { background: rgba(255,51,85,0.12); border: 1px solid rgba(255,51,85,0.35); color: var(--danger); }
+    .conn-pill.waiting {
+      background: rgba(255, 215, 0, 0.12);
+      border: 1px solid rgba(255, 215, 0, 0.35);
+      color: var(--gold);
+    }
 
-.cpill-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: currentColor;
-  animation: blink 1.4s infinite;
-}
-.conn-pill.connected .cpill-dot { animation: none; box-shadow: 0 0 6px currentColor; }
+    .conn-pill.connected {
+      background: rgba(0, 255, 136, 0.1);
+      border: 1px solid rgba(0, 255, 136, 0.4);
+      color: var(--neon);
+    }
 
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+    .conn-pill.error {
+      background: rgba(255, 51, 85, 0.12);
+      border: 1px solid rgba(255, 51, 85, 0.35);
+      color: var(--danger);
+    }
 
-/* SCORE */
-.score-section {
-  text-align: center;
-}
-.score-lbl {
-  font-family: 'Orbitron', monospace;
-  font-size: 0.55rem;
-  letter-spacing: 0.4em;
-  color: rgba(255,255,255,0.35);
-  margin-bottom: 2px;
-}
-.score-num {
-  font-family: 'Orbitron', monospace;
-  font-weight: 900;
-  font-size: 3.5rem;
-  line-height: 1;
-  color: var(--neon);
-  text-shadow: 0 0 24px #00ff8866;
-  transition: color 0.3s;
-}
-.score-num.hit { color: #fff; text-shadow: 0 0 30px #00ff88, 0 0 60px #00ff8844; }
-.score-num.miss { color: var(--danger); text-shadow: 0 0 20px #ff335577; }
+    .cpill-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: blink 1.4s infinite;
+    }
 
-/* SWING BUTTON */
-.swing-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+    .conn-pill.connected .cpill-dot {
+      animation: none;
+      box-shadow: 0 0 6px currentColor;
+    }
 
-.swing-ring {
-  position: absolute;
-  border-radius: 50%;
-  border: 2px solid var(--neon);
-  opacity: 0;
-  animation: none;
-}
+    @keyframes blink {
 
-.swing-btn {
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  border: 3px solid rgba(0,255,136,0.35);
-  background: radial-gradient(circle at 40% 35%, rgba(0,255,136,0.12) 0%, rgba(0,255,136,0.03) 60%, transparent 100%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.12s;
-  position: relative;
-  overflow: hidden;
-}
+      0%,
+      100% {
+        opacity: 1
+      }
 
-.swing-btn::before {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 50%;
-  background: conic-gradient(var(--neon), transparent, var(--neon));
-  opacity: 0;
-  transition: opacity 0.3s;
-  animation: spinBorder 2s linear infinite;
-}
-.swing-btn.ready::before { opacity: 0.4; }
+      50% {
+        opacity: 0.2
+      }
+    }
 
-@keyframes spinBorder { to { transform: rotate(360deg); } }
+    /* SCORE */
+    .score-section {
+      text-align: center;
+    }
 
-.swing-btn.hit-anim {
-  border-color: var(--neon);
-  box-shadow: 0 0 40px rgba(0,255,136,0.6), inset 0 0 30px rgba(0,255,136,0.15);
-  transform: scale(0.93);
-}
+    .score-lbl {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.4em;
+      color: rgba(255, 255, 255, 0.35);
+      margin-bottom: 2px;
+    }
 
-.swing-btn.miss-anim {
-  border-color: var(--danger);
-  box-shadow: 0 0 30px rgba(255,51,85,0.5);
-}
+    .score-num {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: 3.5rem;
+      line-height: 1;
+      color: var(--neon);
+      text-shadow: 0 0 24px #00ff8866;
+      transition: color 0.3s;
+    }
 
-.racket-emoji { font-size: 4.5rem; transition: transform 0.12s; pointer-events: none; }
-.swing-btn.hit-anim .racket-emoji { transform: rotate(-25deg) scale(1.1); }
+    .score-num.hit {
+      color: #fff;
+      text-shadow: 0 0 30px #00ff88, 0 0 60px #00ff8844;
+    }
 
-.swing-label {
-  font-family: 'Orbitron', monospace;
-  font-size: 0.65rem;
-  letter-spacing: 0.3em;
-  color: rgba(255,255,255,0.45);
-  margin-top: 10px;
-  pointer-events: none;
-}
+    .score-num.miss {
+      color: var(--danger);
+      text-shadow: 0 0 20px #ff335577;
+    }
 
-/* ACCEL METER */
-.accel-section { width: 100%; max-width: 260px; }
+    /* SWING BUTTON */
+    .swing-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
 
-.accel-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 7px;
-  font-family: 'Orbitron', monospace;
-  font-size: 0.55rem;
-  letter-spacing: 0.2em;
-  color: rgba(255,255,255,0.3);
-}
+    .swing-ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 2px solid var(--neon);
+      opacity: 0;
+      animation: none;
+    }
 
-.accel-track {
-  width: 100%;
-  height: 5px;
-  background: rgba(255,255,255,0.06);
-  border-radius: 3px;
-  overflow: hidden;
-}
+    .swing-btn {
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      border: 3px solid rgba(0, 255, 136, 0.35);
+      background: radial-gradient(circle at 40% 35%, rgba(0, 255, 136, 0.12) 0%, rgba(0, 255, 136, 0.03) 60%, transparent 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.12s;
+      position: relative;
+      overflow: hidden;
+    }
 
-.accel-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, var(--neon), var(--gold), var(--danger));
-  border-radius: 3px;
-  transition: width 0.04s;
-}
+    .swing-btn::before {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      background: conic-gradient(var(--neon), transparent, var(--neon));
+      opacity: 0;
+      transition: opacity 0.3s;
+      animation: spinBorder 2s linear infinite;
+    }
 
-/* PERMISSION */
-#perm-btn {
-  padding: 14px 32px;
-  background: var(--neon);
-  color: var(--dark);
-  border: none;
-  font-family: 'Orbitron', monospace;
-  font-weight: 900;
-  font-size: 0.8rem;
-  letter-spacing: 0.15em;
-  border-radius: 6px;
-  cursor: pointer;
-  box-shadow: 0 0 20px rgba(0,255,136,0.4);
-  display: none;
-}
+    .swing-btn.ready::before {
+      opacity: 0.4;
+    }
 
-/* RESULT FLASH */
-#result-flash {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Orbitron', monospace;
-  font-weight: 900;
-  font-size: 4rem;
-  pointer-events: none;
-  opacity: 0;
-  z-index: 100;
-  letter-spacing: 0.05em;
-}
-</style>
+    @keyframes spinBorder {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .swing-btn.hit-anim {
+      border-color: var(--neon);
+      box-shadow: 0 0 40px rgba(0, 255, 136, 0.6), inset 0 0 30px rgba(0, 255, 136, 0.15);
+      transform: scale(0.93);
+    }
+
+    .swing-btn.miss-anim {
+      border-color: var(--danger);
+      box-shadow: 0 0 30px rgba(255, 51, 85, 0.5);
+    }
+
+    .racket-emoji {
+      font-size: 4.5rem;
+      transition: transform 0.12s;
+      pointer-events: none;
+    }
+
+    .swing-btn.hit-anim .racket-emoji {
+      transform: rotate(-25deg) scale(1.1);
+    }
+
+    .swing-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.3em;
+      color: rgba(255, 255, 255, 0.45);
+      margin-top: 10px;
+      pointer-events: none;
+    }
+
+    /* ACCEL METER */
+    .accel-section {
+      width: 100%;
+      max-width: 260px;
+    }
+
+    .accel-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 7px;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 0.2em;
+      color: rgba(255, 255, 255, 0.3);
+    }
+
+    .accel-track {
+      width: 100%;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .accel-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--neon), var(--gold), var(--danger));
+      border-radius: 3px;
+      transition: width 0.04s;
+    }
+
+    /* PERMISSION */
+    #perm-btn {
+      padding: 14px 32px;
+      background: var(--neon);
+      color: var(--dark);
+      border: none;
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: 0.8rem;
+      letter-spacing: 0.15em;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(0, 255, 136, 0.4);
+      display: none;
+    }
+
+    /* RESULT FLASH */
+    #result-flash {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: 4rem;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 100;
+      letter-spacing: 0.05em;
+    }
+  </style>
 </head>
+
 <body>
 
-<div class="top-bar">
-  <div class="brand">🎾 SMASH</div>
-  <div class="conn-pill waiting" id="conn-pill">
-    <div class="cpill-dot"></div>
-    <span id="conn-text">接続中...</span>
+  <div class="top-bar">
+    <div class="brand">🎾 SMASH</div>
+    <div class="conn-pill waiting" id="conn-pill">
+      <div class="cpill-dot"></div>
+      <span id="conn-text">接続中...</span>
+    </div>
   </div>
-</div>
 
-<div class="score-section">
-  <div class="score-lbl">SCORE</div>
-  <div class="score-num" id="score-num">0</div>
-</div>
-
-<div class="swing-wrap">
-  <div class="swing-btn" id="swing-btn"
-    ontouchstart="onSwingTouch(event)"
-    onclick="onSwingClick()">
-    <div class="racket-emoji">🎾</div>
-    <div class="swing-label">SWING!</div>
+  <div class="score-section">
+    <div class="score-lbl">SCORE</div>
+    <div class="score-num" id="score-num">0</div>
   </div>
-</div>
 
-<div class="accel-section">
-  <div class="accel-header">
-    <span>SWING POWER</span>
-    <span id="accel-val-txt">0.0</span>
+  <div class="swing-wrap">
+    <div class="swing-btn" id="swing-btn" ontouchstart="onSwingTouch(event)" onclick="onSwingClick()">
+      <div class="racket-emoji">🎾</div>
+      <div class="swing-label">SWING!</div>
+    </div>
   </div>
-  <div class="accel-track">
-    <div class="accel-fill" id="accel-fill"></div>
+
+  <div class="accel-section">
+    <div class="accel-header">
+      <span>SWING POWER</span>
+      <span id="accel-val-txt">0.0</span>
+    </div>
+    <div class="accel-track">
+      <div class="accel-fill" id="accel-fill"></div>
+    </div>
   </div>
-</div>
 
-<button id="perm-btn" onclick="reqPermission()">📡 センサーを有効化</button>
+  <button id="perm-btn" onclick="reqPermission()">📡 センサーを有効化</button>
 
-<div id="result-flash"></div>
+  <div id="result-flash"></div>
 
-<script>
-// ======= PEER CONNECT =======
-const params = new URLSearchParams(location.search);
-const tvPeerId = params.get('peer');
-let peer, conn;
-let score = 0;
-let cooldown = false;
-let motionActive = false;
-let lastMag = 0;
-const SWING_THRESHOLD = 22;
+  <script>
+    // ======= SOUND SYNTHESIZER =======
+    let audioCtx;
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
 
-function initPeer() {
-  if (!tvPeerId) {
-    setConn('error', 'QRコードから開いてください');
-    document.getElementById('perm-btn').style.display = 'block';
-    initMotion();
-    return;
-  }
+    function playSound(type) {
+      if (!audioCtx) return;
+      // Resume context if suspended (browser autoplay policy)
+      if (audioCtx.state === 'suspended') audioCtx.resume();
 
-  peer = new Peer(undefined, {
-    host: '0.peerjs.com', port: 443, secure: true,
-    config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
-  });
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
 
-  peer.on('open', () => {
-    conn = peer.connect(tvPeerId);
-    conn.on('open', () => {
-      setConn('connected', '接続完了 ✓');
-      initMotion();
-    });
-    conn.on('data', onTVData);
-    conn.on('close', () => setConn('error', '切断されました'));
-    conn.on('error', () => setConn('error', 'エラー'));
-  });
+      if (type === 'swing') {
+        // Whoosh-like sweep
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(150, t);
+        osc.frequency.exponentialRampToValueAtTime(800, t + 0.15);
+        gain.gain.setValueAtTime(0.01, t);
+        gain.gain.linearRampToValueAtTime(0.4, t + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+        osc.start(t);
+        osc.stop(t + 0.15);
+      } else if (type === 'hit') {
+        // Sharp high pitch (matches TV)
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(600, t);
+        osc.frequency.exponentialRampToValueAtTime(300, t + 0.1);
+        gain.gain.setValueAtTime(0.3, t);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+        osc.start(t);
+        osc.stop(t + 0.1);
+      } else if (type === 'miss') {
+        // Low buzzer (matches TV)
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, t);
+        osc.frequency.exponentialRampToValueAtTime(50, t + 0.4);
+        gain.gain.setValueAtTime(0.3, t);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4);
+        osc.start(t);
+        osc.stop(t + 0.4);
+      }
+    }
 
-  peer.on('error', () => {
-    setConn('error', '接続失敗');
-    // Still init motion for local use
-    initMotion();
-  });
-}
+    // ======= PEER CONNECT =======
+    const params = new URLSearchParams(location.search);
+    const tvPeerId = params.get('peer');
+    let peer, conn;
+    let score = 0;
+    let cooldown = false;
+    let motionActive = false;
+    let lastMag = 0;
+    const SWING_THRESHOLD = 22;
 
-function setConn(state, text) {
-  const pill = document.getElementById('conn-pill');
-  const txt = document.getElementById('conn-text');
-  pill.className = 'conn-pill ' + state;
-  txt.textContent = text;
-}
+    function initPeer() {
+      if (!tvPeerId) {
+        setConn('error', 'QRコードから開いてください');
+        document.getElementById('perm-btn').style.display = 'block';
+        initMotion();
+        return;
+      }
 
-function onTVData(data) {
-  if (data.type === 'result') {
-    if (data.result === 'hit') {
-      score = data.score;
-      flashScore(true);
+      peer = new Peer(undefined, {
+        host: '0.peerjs.com', port: 443, secure: true,
+        config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+      });
+
+      peer.on('open', () => {
+        conn = peer.connect(tvPeerId);
+        conn.on('open', () => {
+          setConn('connected', '接続完了 ✓');
+          initMotion();
+        });
+        conn.on('data', onTVData);
+        conn.on('close', () => setConn('error', '切断されました'));
+        conn.on('error', () => setConn('error', 'エラー'));
+      });
+
+      peer.on('error', () => {
+        setConn('error', '接続失敗');
+        // Still init motion for local use
+        initMotion();
+      });
+    }
+
+    function setConn(state, text) {
+      const pill = document.getElementById('conn-pill');
+      const txt = document.getElementById('conn-text');
+      pill.className = 'conn-pill ' + state;
+      txt.textContent = text;
+    }
+
+    function onTVData(data) {
+      if (data.type === 'result') {
+        initAudio(); // Ensure audio is ready if they didn't swing first somehow
+        if (data.result === 'hit') {
+          score = data.score;
+          flashScore(true);
+          playSound('hit');
+          animSwingBtn('hit-anim');
+          vibrate([30, 20, 80]);
+        } else if (data.result === 'miss') {
+          flashScore(false);
+          playSound('miss');
+          animSwingBtn('miss-anim');
+          vibrate([200]);
+        }
+      } else if (data.type === 'gameover') {
+        score = data.score;
+        document.getElementById('score-num').textContent = score;
+      }
+    }
+
+    // ======= MOTION =======
+    function initMotion() {
+      if (typeof DeviceMotionEvent === 'undefined') {
+        document.getElementById('perm-btn').style.display = 'none';
+        return;
+      }
+      if (typeof DeviceMotionEvent.requestPermission === 'function') {
+        // iOS
+        document.getElementById('perm-btn').style.display = 'block';
+      } else {
+        enableMotion();
+      }
+    }
+
+    function reqPermission() {
+      DeviceMotionEvent.requestPermission().then(s => {
+        if (s === 'granted') {
+          document.getElementById('perm-btn').style.display = 'none';
+          enableMotion();
+        }
+      }).catch(console.error);
+    }
+
+    function enableMotion() {
+      motionActive = true;
+      window.addEventListener('devicemotion', e => {
+        const a = e.accelerationIncludingGravity || e.acceleration;
+        if (!a) return;
+        const mag = Math.sqrt((a.x || 0) ** 2 + (a.y || 0) ** 2 + (a.z || 0) ** 2);
+        lastMag = mag;
+
+        const pct = Math.min((mag / 50) * 100, 100);
+        document.getElementById('accel-fill').style.width = pct + '%';
+        document.getElementById('accel-val-txt').textContent = mag.toFixed(1);
+
+        // Add ready glow when sensor is active
+        document.getElementById('swing-btn').classList.toggle('ready', mag > 5);
+
+        if (mag > SWING_THRESHOLD && !cooldown) {
+          const power = Math.min(mag / 50, 1);
+          doSwing(power);
+        }
+      }, { passive: true });
+    }
+
+    // ======= SWING =======
+    function onSwingTouch(e) {
+      e.preventDefault();
+      if (!cooldown) doSwing(motionActive ? Math.min(lastMag / 40, 1) : 0.75);
+    }
+
+    function onSwingClick() {
+      if (!cooldown) doSwing(0.75);
+    }
+
+    function doSwing(power) {
+      if (cooldown) return;
+      cooldown = true;
+      initAudio();
+      playSound('swing');
+
+      // Send to TV
+      if (conn && conn.open) {
+        conn.send({ type: 'swing', power });
+      }
+
       animSwingBtn('hit-anim');
-      vibrate([30, 20, 80]);
-    } else if (data.result === 'miss') {
-      flashScore(false);
-      animSwingBtn('miss-anim');
-      vibrate([200]);
+      vibrate([40, 15, 60]);
+
+      setTimeout(() => {
+        cooldown = false;
+        document.getElementById('swing-btn').classList.remove('hit-anim', 'miss-anim');
+      }, 380);
     }
-  } else if (data.type === 'gameover') {
-    score = data.score;
-    document.getElementById('score-num').textContent = score;
-  }
-}
 
-// ======= MOTION =======
-function initMotion() {
-  if (typeof DeviceMotionEvent === 'undefined') {
-    document.getElementById('perm-btn').style.display = 'none';
-    return;
-  }
-  if (typeof DeviceMotionEvent.requestPermission === 'function') {
-    // iOS
-    document.getElementById('perm-btn').style.display = 'block';
-  } else {
-    enableMotion();
-  }
-}
-
-function reqPermission() {
-  DeviceMotionEvent.requestPermission().then(s => {
-    if (s === 'granted') {
-      document.getElementById('perm-btn').style.display = 'none';
-      enableMotion();
+    function animSwingBtn(cls) {
+      const btn = document.getElementById('swing-btn');
+      btn.classList.remove('hit-anim', 'miss-anim');
+      void btn.offsetWidth; // reflow
+      btn.classList.add(cls);
     }
-  }).catch(console.error);
-}
 
-function enableMotion() {
-  motionActive = true;
-  window.addEventListener('devicemotion', e => {
-    const a = e.accelerationIncludingGravity || e.acceleration;
-    if (!a) return;
-    const mag = Math.sqrt((a.x||0)**2 + (a.y||0)**2 + (a.z||0)**2);
-    lastMag = mag;
+    // ======= FEEDBACK =======
+    function flashScore(hit) {
+      const el = document.getElementById('result-flash');
+      el.textContent = hit ? 'HIT!' : 'MISS';
+      el.style.color = hit ? '#00ff88' : '#ff3355';
+      el.style.textShadow = `0 0 40px ${hit ? '#00ff88' : '#ff3355'}`;
+      el.style.opacity = '1';
+      el.style.transition = 'none';
 
-    const pct = Math.min((mag / 50) * 100, 100);
-    document.getElementById('accel-fill').style.width = pct + '%';
-    document.getElementById('accel-val-txt').textContent = mag.toFixed(1);
+      const sn = document.getElementById('score-num');
+      sn.textContent = score;
+      sn.className = 'score-num ' + (hit ? 'hit' : 'miss');
+      setTimeout(() => { sn.className = 'score-num'; }, 500);
 
-    // Add ready glow when sensor is active
-    document.getElementById('swing-btn').classList.toggle('ready', mag > 5);
-
-    if (mag > SWING_THRESHOLD && !cooldown) {
-      const power = Math.min(mag / 50, 1);
-      doSwing(power);
+      setTimeout(() => {
+        el.style.transition = 'opacity 0.4s';
+        el.style.opacity = '0';
+      }, 500);
     }
-  }, { passive: true });
-}
 
-// ======= SWING =======
-function onSwingTouch(e) {
-  e.preventDefault();
-  if (!cooldown) doSwing(motionActive ? Math.min(lastMag / 40, 1) : 0.75);
-}
+    function vibrate(pattern) {
+      if (navigator.vibrate) navigator.vibrate(pattern);
+    }
 
-function onSwingClick() {
-  if (!cooldown) doSwing(0.75);
-}
-
-function doSwing(power) {
-  if (cooldown) return;
-  cooldown = true;
-
-  // Send to TV
-  if (conn && conn.open) {
-    conn.send({ type: 'swing', power });
-  }
-
-  animSwingBtn('hit-anim');
-  vibrate([40, 15, 60]);
-
-  setTimeout(() => {
-    cooldown = false;
-    document.getElementById('swing-btn').classList.remove('hit-anim', 'miss-anim');
-  }, 380);
-}
-
-function animSwingBtn(cls) {
-  const btn = document.getElementById('swing-btn');
-  btn.classList.remove('hit-anim', 'miss-anim');
-  void btn.offsetWidth; // reflow
-  btn.classList.add(cls);
-}
-
-// ======= FEEDBACK =======
-function flashScore(hit) {
-  const el = document.getElementById('result-flash');
-  el.textContent = hit ? 'HIT!' : 'MISS';
-  el.style.color = hit ? '#00ff88' : '#ff3355';
-  el.style.textShadow = `0 0 40px ${hit ? '#00ff88' : '#ff3355'}`;
-  el.style.opacity = '1';
-  el.style.transition = 'none';
-
-  const sn = document.getElementById('score-num');
-  sn.textContent = score;
-  sn.className = 'score-num ' + (hit ? 'hit' : 'miss');
-  setTimeout(() => { sn.className = 'score-num'; }, 500);
-
-  setTimeout(() => {
-    el.style.transition = 'opacity 0.4s';
-    el.style.opacity = '0';
-  }, 500);
-}
-
-function vibrate(pattern) {
-  if (navigator.vibrate) navigator.vibrate(pattern);
-}
-
-// ======= INIT =======
-initPeer();
-</script>
+    // ======= INIT =======
+    initPeer();
+  </script>
 </body>
+
 </html>
