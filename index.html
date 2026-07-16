@@ -1186,9 +1186,16 @@
     function startGame() {
       if (GS.running && document.getElementById('game-container').style.display === 'block') return;
       enableAudio().catch(() => { });
+      clearTimeout(cpuReturnTimer);
+      document.getElementById('gameover').classList.remove('show');
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('game-container').style.display = 'block';
       document.getElementById('mode-badge').textContent = MODES[currentMode].label;
+
+      // Clear UI left by the previous mode before applying the next mode.
+      document.getElementById('match-score').style.display = 'none';
+      document.getElementById('lesson-info').style.display = 'none';
+      document.getElementById('wall-indicator').style.display = 'none';
 
       C = document.getElementById('c');
       ctx = C.getContext('2d');
@@ -1282,7 +1289,17 @@
     // ============================================================
     //  CONTROLLER INPUT
     // ============================================================
+    const seenControllerCommandIds = new Set();
+
     function onControllerData(data) {
+      if (data._commandId) {
+        if (seenControllerCommandIds.has(data._commandId)) return;
+        seenControllerCommandIds.add(data._commandId);
+        if (seenControllerCommandIds.size > 100) {
+          seenControllerCommandIds.delete(seenControllerCommandIds.values().next().value);
+        }
+      }
+
       setStatus(true, controllerTransport === 'relay' ? '中継' : '直接');
       document.getElementById('start-btn').classList.add('active');
 
@@ -1310,7 +1327,11 @@
 
       // スマホ「プレイ開始」でゲームスタート
       if (data.type === 'start_game') {
-        if (document.getElementById('lobby').style.display !== 'none') {
+        // Carrying the mode in the start command makes startup atomic even if
+        // direct and relay messages arrive in a different order.
+        if (data.mode && MODES[data.mode]) selectMode(data.mode);
+        const gameOverVisible = document.getElementById('gameover').classList.contains('show');
+        if (!GS.running || gameOverVisible || document.getElementById('lobby').style.display !== 'none') {
           startGame();
         }
       }

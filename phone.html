@@ -281,8 +281,8 @@
     .quit-btn-small {
       position: relative;
       z-index: 45;
-      min-width: 68px;
-      min-height: 38px;
+      min-width: 76px;
+      min-height: 46px;
       background: rgba(70, 5, 12, 0.78);
       border: 1px solid rgba(255, 120, 120, 0.8);
       color: #ffd5d5;
@@ -476,6 +476,7 @@
 
     /* Phone mode selector buttons */
     .mode-btn {
+      min-height: 48px;
       padding: 10px 8px;
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid rgba(255, 255, 255, 0.18);
@@ -486,6 +487,8 @@
       cursor: pointer;
       transition: all 0.15s;
       -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      user-select: none;
     }
 
     .mode-btn.active {
@@ -563,10 +566,10 @@
         style="font-family:'Orbitron',monospace;font-size:0.55rem;letter-spacing:0.3em;color:rgba(255,255,255,0.35);text-align:center;margin-bottom:8px;">
         GAME MODE</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="mode-grid-phone">
-        <button class="mode-btn active" id="pb-rally" onclick="phoneSelectMode('rally')">🎾 ラリー</button>
-        <button class="mode-btn" id="pb-match" onclick="phoneSelectMode('match')">🏆 試合</button>
-        <button class="mode-btn" id="pb-lesson" onclick="phoneSelectMode('lesson')">📚 レッスン</button>
-        <button class="mode-btn" id="pb-wall" onclick="phoneSelectMode('wall')">🧱 壁打ち</button>
+        <button class="mode-btn active" id="pb-rally" aria-pressed="true" onclick="phoneSelectMode('rally')">🎾 ラリー</button>
+        <button class="mode-btn" id="pb-match" aria-pressed="false" onclick="phoneSelectMode('match')">🏆 試合</button>
+        <button class="mode-btn" id="pb-lesson" aria-pressed="false" onclick="phoneSelectMode('lesson')">📚 レッスン</button>
+        <button class="mode-btn" id="pb-wall" aria-pressed="false" onclick="phoneSelectMode('wall')">🧱 壁打ち</button>
       </div>
     </div>
 
@@ -648,6 +651,7 @@
     const tvPeerId = params.get('room') || params.get('peer');
     let peer, conn;
     let relayClient, relayConnected = false, activeTransport = '';
+    let reliableCommandSeq = 0;
     const relayTopicToPC = tvPeerId ? `smash-tennis/${tvPeerId}/phone-to-pc` : '';
     const relayTopicFromPC = tvPeerId ? `smash-tennis/${tvPeerId}/pc-to-phone` : '';
     let score = 0;
@@ -818,6 +822,35 @@
         return true;
       }
       return false;
+    }
+
+    // Starting, changing modes, and quitting must not depend on whichever
+    // transport most recently reported itself as active. Send these small,
+    // idempotent commands over every available route and let the PC dedupe.
+    function sendReliableToPC(data) {
+      const payload = {
+        ...data,
+        _commandId: `${Date.now().toString(36)}-${++reliableCommandSeq}`,
+      };
+      let sent = false;
+
+      if (conn && conn.open) {
+        try {
+          conn.send(payload);
+          sent = true;
+        } catch (error) {
+          console.warn('Direct command send failed', error);
+        }
+      }
+      if (relayConnected && relayClient) {
+        try {
+          relayClient.publish(relayTopicToPC, JSON.stringify(payload), { qos: 0 });
+          sent = true;
+        } catch (error) {
+          console.warn('Relay command send failed', error);
+        }
+      }
+      return sent;
     }
 
     function handlePeerUnavailable() {
@@ -1169,6 +1202,12 @@
     //  NAVIGATION & MODE
     // ============================================================
     let selectedMode = 'rally';
+    const PHONE_MODE_LABELS = {
+      rally: 'ラリー',
+      match: '試合',
+      lesson: 'レッスン',
+      wall: '壁打ち',
+    };
 
     function startController() {
       unlockPhoneAudio();
@@ -1194,20 +1233,23 @@
 
     function phoneSelectMode(mode) {
       selectedMode = mode;
-      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-      const el = document.getElementById('pb-' + mode);
-      if (el) el.classList.add('active');
+      document.querySelectorAll('.mode-btn').forEach(b => {
+        const active = b.id === 'pb-' + mode;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-pressed', String(active));
+      });
       // Notify PC immediately (even before play starts)
-      sendToPC({ type: 'select_mode', mode });
+      sendReliableToPC({ type: 'select_mode', mode });
+      setMotionStatus(`${PHONE_MODE_LABELS[mode] || mode}モードを選択しました`, 'detected');
+      if (navigator.vibrate) navigator.vibrate(20);
     }
 
     function goToPlay() {
       if (playStarted) return;
       playStarted = true;
-      // Send start to PC
-      sendToPC({ type: 'start_game' });
-      // Send mode to PC before switching to play screen
-      sendToPC({ type: 'select_mode', mode: selectedMode });
+      // The PC must receive the selected mode before it initializes the game.
+      sendReliableToPC({ type: 'select_mode', mode: selectedMode });
+      sendReliableToPC({ type: 'start_game', mode: selectedMode });
       document.getElementById('screen-test').classList.remove('active');
       document.getElementById('screen-play').classList.add('active');
       setupSwipeZone();
@@ -1217,7 +1259,7 @@
       event?.preventDefault();
       event?.stopPropagation();
       playStarted = false;
-      sendToPC({ type: 'quit_game' });
+      sendReliableToPC({ type: 'quit_game' });
       returnToControllerMenu('ゲームを終了しました。PCとの接続は維持されています');
     }
 
