@@ -217,6 +217,51 @@
       box-shadow: 0 0 6px currentColor;
     }
 
+    #swing-test-feedback {
+      padding: 9px 12px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.55);
+      font-size: 0.75rem;
+      text-align: center;
+      transition: all 0.15s;
+    }
+
+    #swing-test-feedback.detected {
+      border-color: #6ef0a0;
+      background: rgba(110, 240, 160, 0.18);
+      color: #fff;
+      box-shadow: 0 0 24px rgba(110, 240, 160, 0.5);
+      transform: scale(1.03);
+    }
+
+    .audio-unlock-btn {
+      width: 100%;
+      padding: 9px 12px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(0, 204, 255, 0.6);
+      border-radius: 8px;
+      background: rgba(0, 204, 255, 0.12);
+      color: #8be9ff;
+      font-family: 'Noto Sans JP', sans-serif;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .audio-unlock-btn.enabled {
+      border-color: rgba(110, 240, 160, 0.5);
+      background: rgba(110, 240, 160, 0.12);
+      color: #6ef0a0;
+      cursor: default;
+    }
+
+    #lobby.swing-detected .connect-row {
+      border-color: #6ef0a0;
+      box-shadow: 0 0 50px rgba(110, 240, 160, 0.45);
+    }
+
     @keyframes blink {
 
       0%,
@@ -648,6 +693,10 @@
             <div class="status-dot"></div>
             <span id="status-text">スマホで接続を待機中...</span>
           </div>
+          <div id="swing-test-feedback">スマホを振ると、ここが緑色に光ります</div>
+          <button class="audio-unlock-btn" id="audio-unlock-btn" onclick="enableAudio()">
+            🔊 PCの音声を有効化
+          </button>
           <button class="start-btn" id="start-btn" onclick="startGame()">▶ ゲーム スタート</button>
           <div class="hint-text">上のQRコードをスマホで読み取って接続</div>
         </div>
@@ -774,9 +823,36 @@
     SFX.swing.volume = 1.0; // max, will be boosted further via synth
 
     let audioCtx;
+    let audioUnlocked = false;
+    let swingTestCount = 0;
+
     function getAudioCtx() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       return audioCtx;
+    }
+
+    async function enableAudio() {
+      const btn = document.getElementById('audio-unlock-btn');
+      try {
+        const ctx = getAudioCtx();
+        if (ctx.state === 'suspended') await ctx.resume();
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.02);
+
+        audioUnlocked = true;
+        btn.textContent = '✓ PCの音声は有効です';
+        btn.classList.add('enabled');
+        btn.disabled = true;
+      } catch (error) {
+        console.error(error);
+        btn.textContent = '音声を有効にできませんでした。もう一度クリック';
+      }
     }
 
     function playHit() {
@@ -888,7 +964,7 @@
       let base = location.pathname;
       if (base.endsWith('index.html')) base = base.replace('index.html', '');
       if (!base.endsWith('/')) base += '/';
-      const url = `${location.origin}${base}phone.html?peer=${peerId}&v=20260716-motion-fix`;
+      const url = `${location.origin}${base}phone.html?peer=${peerId}&v=20260716-pc-feedback`;
       document.getElementById('qr-code').innerHTML = '';
       new QRCode(document.getElementById('qr-code'), {
         text: url, width: 130, height: 130,
@@ -908,6 +984,26 @@
         txt.textContent = 'スマホで接続を待機中...';
         document.getElementById('start-btn').classList.remove('active');
       }
+    }
+
+    function showLobbySwingFeedback() {
+      swingTestCount += 1;
+      const feedback = document.getElementById('swing-test-feedback');
+      const lobby = document.getElementById('lobby');
+      feedback.textContent = audioUnlocked
+        ? `✓ PCで素振りを受信しました（${swingTestCount}回）`
+        : `✓ PCで素振りを受信しました（${swingTestCount}回）—「PCの音声を有効化」を押してください`;
+      feedback.classList.remove('detected');
+      lobby.classList.remove('swing-detected');
+      requestAnimationFrame(() => {
+        feedback.classList.add('detected');
+        lobby.classList.add('swing-detected');
+      });
+      clearTimeout(showLobbySwingFeedback._timer);
+      showLobbySwingFeedback._timer = setTimeout(() => {
+        feedback.classList.remove('detected');
+        lobby.classList.remove('swing-detected');
+      }, 700);
     }
 
     // ============================================================
@@ -1082,7 +1178,18 @@
     //  CONTROLLER INPUT
     // ============================================================
     function onControllerData(data) {
-      if (data.type === 'trigger_swing_sound') playSwing();
+      setStatus(true);
+      document.getElementById('start-btn').classList.add('active');
+
+      if (data.type === 'controller_ready') {
+        if (conn && conn.open) conn.send({ type: 'controller_ack', audioUnlocked });
+      }
+
+      if (data.type === 'trigger_swing_sound') {
+        showLobbySwingFeedback();
+        playSwing();
+        if (conn && conn.open) conn.send({ type: 'swing_test_ack', audioUnlocked });
+      }
 
       if (data.type === 'swing' && GS.running) {
         const swingType = data.swingType || 'forehand';

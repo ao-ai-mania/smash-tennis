@@ -660,6 +660,7 @@
         conn = peer.connect(tvPeerId);
         conn.on('open', () => {
           setConn('connected', '✓ 接続完了');
+          conn.send({ type: 'controller_ready' });
         });
         conn.on('data', onTVData);
         conn.on('close', () => setConn('error', '切断されました'));
@@ -679,7 +680,16 @@
     }
 
     function onTVData(data) {
-      if (data.type === 'result') {
+      if (data.type === 'controller_ack') {
+        setConn('connected', '✓ PC接続完了');
+      } else if (data.type === 'swing_test_ack') {
+        setMotionStatus(
+          data.audioUnlocked
+            ? '✓ PC受信OK！音も有効です'
+            : '✓ PC受信OK！PC側で「音声を有効化」を押してください',
+          'detected'
+        );
+      } else if (data.type === 'result') {
         if (data.result === 'hit') {
           score = data.score;
           flashResult(true);
