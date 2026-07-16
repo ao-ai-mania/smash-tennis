@@ -890,7 +890,7 @@
       document.getElementById('screen-test').classList.add('active');
       const startBtn = document.getElementById('start-action-btn');
       startBtn.style.display = 'block';
-      startBtn.textContent = '▶ ラリーを開始';
+      startBtn.textContent = '▶ もう一度ラリー';
       showConnectedStatus();
       setMotionStatus(message, 'detected');
     }
@@ -990,7 +990,11 @@
 
       motionEventReceived = true;
       clearTimeout(motionWatchTimer);
-      document.getElementById('start-action-btn').style.display = 'none';
+      // Motion events continue after the game ends. Hiding the action on every
+      // event made the replay button disappear as soon as it was displayed.
+      if (playStarted) {
+        document.getElementById('start-action-btn').style.display = 'none';
+      }
 
       const a = hasGravity ? gravity : linear;
       const x = Number.isFinite(a.x) ? a.x : 0;

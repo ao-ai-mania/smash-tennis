@@ -426,15 +426,18 @@
       bottom: 0;
       left: 0;
       width: 100%;
-      height: 320px;
       pointer-events: none;
     }
 
     #racket-canvas {
+      height: 320px;
       z-index: 17;
     }
 
     #racket-3d-canvas {
+      top: 0;
+      bottom: auto;
+      height: 100%;
       z-index: 16;
       opacity: 0;
       transition: opacity 0.35s ease;
@@ -1296,6 +1299,7 @@
       if (data.type === 'swing' && GS.running) {
         const swingType = data.swingType || 'forehand';
         const power = data.power || 0.75;
+        lastSwingType = swingType;
         racketSwingKick = Math.max(racketSwingKick, 1);
         if (currentMode === 'smash') {
           handleSmashSwing(swingType, power, data.dx || 0);
@@ -2163,7 +2167,7 @@
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
-        camera.position.set(0, 0.15, 10);
+        camera.position.set(0, 0.15, 18);
 
         scene.add(new THREE.HemisphereLight(0xdffaff, 0x102a32, 2.25));
         const key = new THREE.DirectionalLight(0xffffff, 4.2);
@@ -2291,7 +2295,7 @@
         model.add(wrist);
 
         model.rotation.x = -0.08;
-        root.position.set(0, -0.12, 0);
+        root.position.set(0, -3.0, 0);
 
         Object.assign(racket3D, {
           THREE,
@@ -2348,15 +2352,20 @@
       racket3D.targetQuaternion.setFromEuler(targetEuler);
       root.quaternion.slerp(racket3D.targetQuaternion, 0.24);
       root.position.x += ((roll / 70) * 0.52 - root.position.x) * 0.18;
-      root.position.y += (-0.12 - (pitch / 70) * 0.22 - root.position.y) * 0.18;
+      const restingY = -3.0 - (pitch / 70) * 0.42;
+      root.position.y += (restingY - root.position.y) * 0.18;
 
       const swingProgress = 1 - racketSwingKick;
       const swingArc = racketSwingKick > 0 ? Math.sin(swingProgress * Math.PI) : 0;
       const sliceDirection = lastSwingType === 'slice' ? -1 : 1;
-      model.rotation.y = swingArc * -0.95 * sliceDirection;
-      model.rotation.z = swingArc * 0.38 * sliceDirection;
-      model.position.x = swingArc * 0.52 * sliceDirection;
-      model.position.z = swingArc * 0.5;
+      const isForehand = lastSwingType === 'forehand';
+      model.rotation.y = swingArc * (isForehand ? -0.72 : -0.95 * sliceDirection);
+      model.rotation.z = swingArc * (isForehand ? -1.05 : 0.38 * sliceDirection);
+      model.position.x = swingArc * (isForehand ? -1.8 : 0.72 * sliceDirection);
+      model.position.y = swingArc * (isForehand ? 7.0 : 3.4);
+      model.position.z = swingArc * 0.8;
+      const swingScale = 1 + swingArc * (isForehand ? 0.12 : 0.08);
+      model.scale.setScalar(swingScale);
       racketSwingKick = Math.max(0, racketSwingKick - 0.055);
 
       const pulse = sweetZoneActive ? 0.65 + Math.sin(Date.now() * 0.012) * 0.25 : 0;
