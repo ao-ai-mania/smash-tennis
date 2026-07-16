@@ -888,7 +888,7 @@
       let base = location.pathname;
       if (base.endsWith('index.html')) base = base.replace('index.html', '');
       if (!base.endsWith('/')) base += '/';
-      const url = `${location.origin}${base}phone.html?peer=${peerId}`;
+      const url = `${location.origin}${base}phone.html?peer=${peerId}&v=20260716-motion-fix`;
       document.getElementById('qr-code').innerHTML = '';
       new QRCode(document.getElementById('qr-code'), {
         text: url, width: 130, height: 130,

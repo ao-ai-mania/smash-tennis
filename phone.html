@@ -48,9 +48,11 @@
 
     /* ===== SWING TEST SCREEN ===== */
     #screen-test {
-      justify-content: center;
-      gap: 24px;
-      padding: 32px 24px;
+      justify-content: flex-start;
+      gap: 16px;
+      padding: max(20px, env(safe-area-inset-top)) 24px max(20px, env(safe-area-inset-bottom));
+      overflow-y: auto;
+      overscroll-behavior: contain;
       background: radial-gradient(ellipse at 50% 0%, #1a3020 0%, #0a0a0a 65%);
     }
 
@@ -166,6 +168,11 @@
       font-size: 0.75rem;
       letter-spacing: 0.1em;
       cursor: pointer;
+    }
+
+    .perm-btn:disabled {
+      opacity: 0.55;
+      cursor: wait;
     }
 
     .conn-status {
@@ -539,8 +546,8 @@
       </div>
     </div>
 
-    <button class="perm-btn" id="perm-btn" style="display:none" onclick="reqPermission()">
-      📡 センサーを有効化 (iOS)
+    <button class="perm-btn" id="perm-btn" onclick="reqPermission()">
+      📡 センサーを有効化
     </button>
 
     <button class="test-ok-btn" onclick="goToPlay()">
@@ -631,6 +638,9 @@
     let lastAcc = { x: 0, y: 0, z: 0 };
     const SWING_THRESHOLD = 15;     // Raw magnitude threshold
     let swingDetectedInTest = false;
+    let motionListenerAttached = false;
+    let motionEventReceived = false;
+    let motionWatchTimer;
 
     // ============================================================
     //  PEER INIT
@@ -638,7 +648,6 @@
     function initPeer() {
       if (!tvPeerId) {
         setConn('error', 'QRコードから接続してください');
-        initMotion();
         return;
       }
 
@@ -651,7 +660,6 @@
         conn = peer.connect(tvPeerId);
         conn.on('open', () => {
           setConn('connected', '✓ 接続完了');
-          initMotion();
         });
         conn.on('data', onTVData);
         conn.on('close', () => setConn('error', '切断されました'));
@@ -660,7 +668,6 @@
 
       peer.on('error', () => {
         setConn('error', '接続失敗 – オフラインモード');
-        initMotion();
       });
     }
 
@@ -700,37 +707,105 @@
     //  MOTION
     // ============================================================
     function initMotion() {
-      if (typeof DeviceMotionEvent === 'undefined') return;
+      const btn = document.getElementById('perm-btn');
+      if (!window.isSecureContext) {
+        setMotionStatus('HTTPSで開くとセンサーを利用できます', 'error');
+        btn.style.display = 'none';
+        return;
+      }
+      if (typeof DeviceMotionEvent === 'undefined') {
+        setMotionStatus('このブラウザではセンサーを利用できません。SafariまたはChromeで開いてください', 'error');
+        btn.style.display = 'block';
+        btn.disabled = true;
+        return;
+      }
+
+      btn.style.display = 'block';
       if (typeof DeviceMotionEvent.requestPermission === 'function') {
-        document.getElementById('perm-btn').style.display = 'block';
+        setMotionStatus('下のボタンを押してセンサーを許可してください');
       } else {
         enableMotion();
       }
     }
 
-    function reqPermission() {
-      DeviceMotionEvent.requestPermission().then(s => {
-        if (s === 'granted') {
-          document.getElementById('perm-btn').style.display = 'none';
-          enableMotion();
+    async function reqPermission() {
+      const btn = document.getElementById('perm-btn');
+      btn.disabled = true;
+      setMotionStatus('センサーの許可を確認しています…');
+
+      try {
+        const permissionRequests = [];
+        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+          permissionRequests.push(DeviceMotionEvent.requestPermission());
         }
-      }).catch(console.error);
+        if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+          permissionRequests.push(DeviceOrientationEvent.requestPermission());
+        }
+
+        const results = await Promise.all(permissionRequests);
+        if (results.some(result => result !== 'granted')) {
+          setMotionStatus('センサーが拒否されました。ブラウザのサイト設定から許可してください', 'error');
+          return;
+        }
+        enableMotion();
+      } catch (error) {
+        console.error(error);
+        setMotionStatus('許可を取得できません。SafariまたはChromeで開き直してください', 'error');
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     function enableMotion() {
       motionActive = true;
-      window.addEventListener('devicemotion', onMotion, { passive: true });
-      window.addEventListener('deviceorientation', onOrientation, { passive: true });
+      if (!motionListenerAttached) {
+        motionListenerAttached = true;
+        window.addEventListener('devicemotion', onMotion, { passive: true });
+        window.addEventListener('deviceorientation', onOrientation, { passive: true });
+      }
+
+      setMotionStatus('センサー入力を待っています…');
+      const btn = document.getElementById('perm-btn');
+      btn.textContent = '📡 センサーを再試行';
+      clearTimeout(motionWatchTimer);
+      motionWatchTimer = setTimeout(() => {
+        if (!motionEventReceived) {
+          setMotionStatus('値が届きません。SafariまたはChromeで開き、モーションセンサーを許可してください', 'error');
+          btn.style.display = 'block';
+        }
+      }, 2500);
+    }
+
+    function setMotionStatus(text, state = '') {
+      const el = document.getElementById('test-status');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'swing-status' + (state === 'detected' ? ' detected' : '');
+      el.style.color = state === 'error' ? 'var(--danger)' : '';
     }
 
     function onMotion(e) {
-      // Use raw accelerationIncludingGravity (reliable across all Android/iOS)
-      const a = e.accelerationIncludingGravity || e.acceleration;
-      if (!a) return;
+      const gravity = e.accelerationIncludingGravity;
+      const linear = e.acceleration;
+      const hasGravity = gravity &&
+        [gravity.x, gravity.y, gravity.z].some(Number.isFinite);
+      const hasLinear = linear &&
+        [linear.x, linear.y, linear.z].some(Number.isFinite);
+      if (!hasGravity && !hasLinear) return;
 
-      const mag = Math.sqrt((a.x || 0) ** 2 + (a.y || 0) ** 2 + (a.z || 0) ** 2);
+      motionEventReceived = true;
+      clearTimeout(motionWatchTimer);
+      document.getElementById('perm-btn').style.display = 'none';
+
+      const a = hasGravity ? gravity : linear;
+      const x = Number.isFinite(a.x) ? a.x : 0;
+      const y = Number.isFinite(a.y) ? a.y : 0;
+      const z = Number.isFinite(a.z) ? a.z : 0;
+      const rawMag = Math.sqrt(x ** 2 + y ** 2 + z ** 2);
+      const mag = hasGravity ? rawMag : rawMag + 9.81;
       lastMag = mag;
-      lastAcc = a;
+      lastAcc = { x, y, z };
 
       const pct = Math.min((mag / 50) * 100, 100);
 
@@ -740,6 +815,9 @@
       const testSt = document.getElementById('test-status');
       if (testFill) testFill.style.width = pct + '%';
       if (testVal) testVal.textContent = mag.toFixed(1);
+      if (!swingDetectedInTest && testSt) {
+        setMotionStatus('センサー検出OK。スマホを振ってみてください');
+      }
 
       // Update play screen
       const playFill = document.getElementById('play-power-fill');
@@ -751,7 +829,7 @@
       if (mag > SWING_THRESHOLD && !cooldown) {
         if (!swingDetectedInTest) {
           swingDetectedInTest = true;
-          if (testSt) { testSt.textContent = '✓ 振り検出OK！PCから音が鳴りましたか？'; testSt.className = 'swing-status detected'; }
+          if (testSt) setMotionStatus('✓ 振り検出OK！PCから音が鳴りましたか？', 'detected');
         }
         doSwing(Math.min(mag / 50, 1));
       }
@@ -956,6 +1034,7 @@
     // ============================================================
     //  INIT
     // ============================================================
+    initMotion();
     initPeer();
   </script>
 </body>
