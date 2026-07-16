@@ -663,6 +663,65 @@
     let pcConnected = false;
     let playStarted = false;
     let swipeZoneReady = false;
+    let controllerArmed = false;
+    let orientationOrigin = null;
+    let phoneAudioCtx = null;
+    let phoneAudioReady = false;
+    const phoneAudioBuffers = {};
+    const PHONE_SOUND_FILES = {
+      swing: 'sounds_swing.mp3',
+      hit: 'sounds_racket1.mp3',
+      hit2: 'sounds_racket2.mp3',
+      cheer: 'sounds_cheer.mp3',
+      footstep: 'sounds_footstep.mp3',
+    };
+
+    function getPhoneAudioCtx() {
+      if (!phoneAudioCtx) {
+        phoneAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      return phoneAudioCtx;
+    }
+
+    function unlockPhoneAudio() {
+      try {
+        const ctx = getPhoneAudioCtx();
+        ctx.resume().catch(() => { });
+
+        const silentBuffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+        const silentSource = ctx.createBufferSource();
+        silentSource.buffer = silentBuffer;
+        silentSource.connect(ctx.destination);
+        silentSource.start(0);
+        phoneAudioReady = true;
+
+        Object.entries(PHONE_SOUND_FILES).forEach(([name, url]) => {
+          if (phoneAudioBuffers[name]) return;
+          fetch(url)
+            .then(response => response.arrayBuffer())
+            .then(data => ctx.decodeAudioData(data))
+            .then(decoded => { phoneAudioBuffers[name] = decoded; })
+            .catch(error => console.warn(`Phone audio load failed: ${name}`, error));
+        });
+      } catch (error) {
+        console.warn('Phone audio unavailable', error);
+      }
+    }
+
+    function playPhoneSound(name, volume = 0.7) {
+      if (!phoneAudioReady || !phoneAudioCtx || !phoneAudioBuffers[name]) return;
+      try {
+        const source = phoneAudioCtx.createBufferSource();
+        const gain = phoneAudioCtx.createGain();
+        source.buffer = phoneAudioBuffers[name];
+        gain.gain.value = volume;
+        source.connect(gain);
+        gain.connect(phoneAudioCtx.destination);
+        source.start();
+      } catch (error) {
+        console.warn(`Phone audio play failed: ${name}`, error);
+      }
+    }
 
     // ============================================================
     //  PEER INIT
@@ -688,8 +747,8 @@
           sendToPC({ type: 'controller_ready' });
         });
         conn.on('data', onTVData);
-        conn.on('close', () => setConn('error', '切断されました'));
-        conn.on('error', () => setConn('error', 'エラー'));
+        conn.on('close', () => handlePeerUnavailable());
+        conn.on('error', () => handlePeerUnavailable());
       });
 
       peer.on('error', () => {
@@ -726,6 +785,10 @@
       });
       relayClient.on('close', () => {
         relayConnected = false;
+        if (!conn || !conn.open) {
+          pcConnected = false;
+          setConn('waiting', 'PCへ再接続中...');
+        }
       });
       relayClient.on('error', error => {
         console.warn('Relay error', error);
@@ -757,6 +820,24 @@
       return false;
     }
 
+    function handlePeerUnavailable() {
+      if (relayConnected) {
+        activeTransport = 'relay';
+        pcConnected = true;
+        showConnectedStatus();
+        return;
+      }
+      pcConnected = false;
+      setConn('waiting', 'PCへ再接続中...');
+    }
+
+    function showConnectedStatus() {
+      setConn(
+        'connected',
+        activeTransport === 'relay' ? '✓ PC接続完了（中継）' : '✓ PC接続完了'
+      );
+    }
+
     function setConn(state, text) {
       ['conn-pill'].forEach(id => {
         const el = document.getElementById(id);
@@ -768,45 +849,50 @@
       if (data.type === 'controller_ack') {
         if (data.transport === 'relay') activeTransport = 'relay';
         pcConnected = true;
-        setConn('connected', `✓ PC接続完了${activeTransport === 'relay' ? '（中継）' : ''}`);
+        showConnectedStatus();
         maybeAutoStart();
       } else if (data.type === 'swing_test_ack') {
         setMotionStatus(
           data.audioUnlocked
             ? '✓ PC受信OK！音も有効です'
-            : '✓ PC受信OK！PC側で「音声を有効化」を押してください',
+            : '✓ PC受信OK！スマホ音声は有効です。PC音声はPC画面を一度タップ',
           'detected'
         );
       } else if (data.type === 'result') {
         if (data.result === 'hit') {
           score = data.score;
+          playPhoneSound(Math.random() > 0.5 ? 'hit' : 'hit2', 0.82);
+          setTimeout(() => playPhoneSound('footstep', 0.18), 120);
           flashResult(true);
           animSwing('swung');
         } else if (data.result === 'miss') {
+          playPhoneSound('footstep', 0.13);
           flashResult(false);
         }
         updatePlayScore();
       } else if (data.type === 'gameover') {
         score = data.score;
         updatePlayScore();
-        // Return to swing test screen so player can change mode
+        playPhoneSound('cheer', 0.35);
         setTimeout(() => {
-          playStarted = false;
-          document.getElementById('screen-play').classList.remove('active');
-          document.getElementById('screen-test').classList.add('active');
-          const startBtn = document.getElementById('start-action-btn');
-          startBtn.style.display = 'block';
-          startBtn.textContent = '▶ もう一度ラリー';
+          returnToControllerMenu('ゲーム終了。PCとの接続は維持されています');
         }, 800);
       } else if (data.type === 'show_menu') {
-        // PC returned to lobby – show test screen on phone too
-        playStarted = false;
-        document.getElementById('screen-play').classList.remove('active');
-        document.getElementById('screen-test').classList.add('active');
-        const startBtn = document.getElementById('start-action-btn');
-        startBtn.style.display = 'block';
-        startBtn.textContent = '▶ ラリーを再開';
+        returnToControllerMenu('PCがメニューに戻りました。接続は維持されています');
       }
+    }
+
+    function returnToControllerMenu(message) {
+      clearTimeout(motionWatchTimer);
+      playStarted = false;
+      controllerArmed = false;
+      document.getElementById('screen-play').classList.remove('active');
+      document.getElementById('screen-test').classList.add('active');
+      const startBtn = document.getElementById('start-action-btn');
+      startBtn.style.display = 'block';
+      startBtn.textContent = '▶ ラリーを開始';
+      showConnectedStatus();
+      setMotionStatus(message, 'detected');
     }
 
     // ============================================================
@@ -924,7 +1010,7 @@
       if (testFill) testFill.style.width = pct + '%';
       if (testVal) testVal.textContent = mag.toFixed(1);
       if (!swingDetectedInTest && testSt) {
-        setMotionStatus('センサー検出OK。スマホを振ってみてください');
+        setMotionStatus('センサー・スマホ音声OK。スマホを振ってみてください');
       }
 
       // Update play screen
@@ -937,7 +1023,7 @@
       if (mag > SWING_THRESHOLD && !cooldown) {
         if (!swingDetectedInTest) {
           swingDetectedInTest = true;
-          if (testSt) setMotionStatus('✓ 振り検出OK！PCから音が鳴りましたか？', 'detected');
+          if (testSt) setMotionStatus('✓ 振り検出OK！スマホからスイング音が鳴ります', 'detected');
         }
         doSwing(Math.min(mag / 50, 1));
       }
@@ -945,23 +1031,45 @@
 
     function onOrientation(e) {
       const bg = document.getElementById('racket-bg');
-      const beta = Math.max(-30, Math.min(30, (e.beta || 0) - 45));  // forward/back
-      const gamma = Math.max(-25, Math.min(25, e.gamma || 0));         // left/right
+      const alpha = Number.isFinite(e.alpha) ? e.alpha : 0;
+      const rawBeta = Number.isFinite(e.beta) ? e.beta : 0;
+      const rawGamma = Number.isFinite(e.gamma) ? e.gamma : 0;
+      if (!orientationOrigin) {
+        orientationOrigin = { alpha, beta: rawBeta, gamma: rawGamma };
+      }
+      const angleDelta = (value, origin) => ((value - origin + 540) % 360) - 180;
+      const yaw = Math.max(-80, Math.min(80, angleDelta(alpha, orientationOrigin.alpha)));
+      const pitch = Math.max(-70, Math.min(70, rawBeta - orientationOrigin.beta));
+      const roll = Math.max(-70, Math.min(70, rawGamma - orientationOrigin.gamma));
 
-      // Tilt racket image on phone
-      if (bg) bg.style.transform = `rotate(${gamma * 0.4}deg) translateY(${beta * 0.5}px)`;
+      if (bg) {
+        bg.style.transform =
+          `perspective(620px) rotateX(${pitch * 0.55}deg) rotateY(${-yaw * 0.28}deg) ` +
+          `rotateZ(${roll * 0.7}deg) translateY(${pitch * 0.35}px)`;
+      }
 
       // Tilt dots
       const tx = document.getElementById('tilt-x-dot');
       const ty = document.getElementById('tilt-y-dot');
-      if (tx) tx.style.left = (50 + gamma * 1.5) + '%';
-      if (ty) ty.style.left = (50 + beta * 1.0) + '%';
+      if (tx) tx.style.left = Math.max(4, Math.min(96, 50 + roll * 0.65)) + '%';
+      if (ty) ty.style.left = Math.max(4, Math.min(96, 50 + pitch * 0.65)) + '%';
 
       // Stream tilt data to PC (throttled to ~20fps)
       const now = Date.now();
       if (!onOrientation._last || now - onOrientation._last > 50) {
         onOrientation._last = now;
-        sendToPC({ type: 'tilt', x: gamma, y: beta });
+        sendToPC({
+          type: 'tilt',
+          x: roll,
+          y: pitch,
+          roll,
+          pitch,
+          yaw,
+          alpha,
+          beta: rawBeta,
+          gamma: rawGamma,
+          screen: screen.orientation?.angle || window.orientation || 0,
+        });
       }
     }
 
@@ -1023,7 +1131,9 @@
         swingType = 'forehand'; // moving up/forward normally
       }
 
-      // Tell PC to play swing sound and pass swing type/power
+      // The permission tap unlocks this local audio, so it remains reliable
+      // even when the PC browser blocks remotely triggered autoplay.
+      playPhoneSound('swing', 0.92);
       sendToPC({ type: 'trigger_swing_sound' });
       sendToPC({ type: 'swing', power, swingType, dx: aX });
 
@@ -1057,17 +1167,21 @@
     let selectedMode = 'rally';
 
     function startController() {
+      unlockPhoneAudio();
+      orientationOrigin = null;
+      controllerArmed = true;
       if (typeof DeviceMotionEvent !== 'undefined' &&
         typeof DeviceMotionEvent.requestPermission === 'function' &&
         !motionActive) {
         reqPermission();
         return;
       }
-      goToPlay();
+      maybeAutoStart();
+      if (!pcConnected) setMotionStatus('PCへ接続したら自動でラリーを開始します');
     }
 
     function maybeAutoStart() {
-      if (!pcConnected || playStarted) return;
+      if (!pcConnected || !controllerArmed || playStarted) return;
       if (typeof DeviceMotionEvent !== 'undefined' &&
         typeof DeviceMotionEvent.requestPermission === 'function' &&
         !motionActive) return;
@@ -1100,10 +1214,7 @@
       event?.stopPropagation();
       playStarted = false;
       sendToPC({ type: 'quit_game' });
-      document.getElementById('screen-play').classList.remove('active');
-      document.getElementById('screen-test').classList.add('active');
-      document.getElementById('start-action-btn').style.display = 'block';
-      document.getElementById('start-action-btn').textContent = '▶ ラリーを再開';
+      returnToControllerMenu('ゲームを終了しました。PCとの接続は維持されています');
     }
 
     // ============================================================
