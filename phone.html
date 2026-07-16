@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>SMASH – ラケット</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.15.2/dist/mqtt.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Orbitron:wght@700;900&display=swap');
 
@@ -629,8 +630,11 @@
     //  PEER & STATE
     // ============================================================
     const params = new URLSearchParams(location.search);
-    const tvPeerId = params.get('peer');
+    const tvPeerId = params.get('room') || params.get('peer');
     let peer, conn;
+    let relayClient, relayConnected = false, activeTransport = '';
+    const relayTopicToPC = tvPeerId ? `smash-tennis/${tvPeerId}/phone-to-pc` : '';
+    const relayTopicFromPC = tvPeerId ? `smash-tennis/${tvPeerId}/pc-to-phone` : '';
     let score = 0;
     let cooldown = false;
     let motionActive = false;
@@ -651,6 +655,8 @@
         return;
       }
 
+      initRelay();
+
       peer = new Peer(undefined, {
         host: '0.peerjs.com', port: 443, secure: true,
         config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
@@ -659,8 +665,9 @@
       peer.on('open', () => {
         conn = peer.connect(tvPeerId);
         conn.on('open', () => {
+          activeTransport = 'peer';
           setConn('connected', '✓ 接続完了');
-          conn.send({ type: 'controller_ready' });
+          sendToPC({ type: 'controller_ready' });
         });
         conn.on('data', onTVData);
         conn.on('close', () => setConn('error', '切断されました'));
@@ -668,8 +675,68 @@
       });
 
       peer.on('error', () => {
-        setConn('error', '接続失敗 – オフラインモード');
+        if (!relayConnected) setConn('waiting', '中継経路へ接続中...');
       });
+    }
+
+    function initRelay() {
+      if (typeof mqtt === 'undefined') {
+        setConn('error', '中継ライブラリを読み込めません');
+        return;
+      }
+
+      relayClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+        clientId: `smash-phone-${tvPeerId}-${Math.random().toString(36).slice(2, 8)}`,
+        clean: true,
+        connectTimeout: 10000,
+        reconnectPeriod: 2000,
+        keepalive: 30
+      });
+
+      relayClient.on('connect', () => {
+        relayConnected = true;
+        relayClient.subscribe(relayTopicFromPC, { qos: 0 }, error => {
+          if (error) return;
+          if (!conn || !conn.open) activeTransport = 'relay';
+          setConn('waiting', 'PCへ接続中（中継）...');
+          sendToPC({ type: 'controller_ready' });
+        });
+      });
+      relayClient.on('reconnect', () => {
+        relayConnected = false;
+        if (!conn || !conn.open) setConn('waiting', '中継へ再接続中...');
+      });
+      relayClient.on('close', () => {
+        relayConnected = false;
+      });
+      relayClient.on('error', error => {
+        console.warn('Relay error', error);
+      });
+      relayClient.on('message', (topic, payload) => {
+        if (topic !== relayTopicFromPC) return;
+        try {
+          if (!conn || !conn.open) activeTransport = 'relay';
+          onTVData(JSON.parse(payload.toString()));
+        } catch (error) {
+          console.warn('Invalid relay message', error);
+        }
+      });
+    }
+
+    function sendToPC(data) {
+      if (activeTransport === 'peer' && conn && conn.open) {
+        conn.send(data);
+        return true;
+      }
+      if (relayConnected && relayClient) {
+        relayClient.publish(relayTopicToPC, JSON.stringify(data), { qos: 0 });
+        return true;
+      }
+      if (conn && conn.open) {
+        conn.send(data);
+        return true;
+      }
+      return false;
     }
 
     function setConn(state, text) {
@@ -681,7 +748,8 @@
 
     function onTVData(data) {
       if (data.type === 'controller_ack') {
-        setConn('connected', '✓ PC接続完了');
+        if (data.transport === 'relay') activeTransport = 'relay';
+        setConn('connected', `✓ PC接続完了${activeTransport === 'relay' ? '（中継）' : ''}`);
       } else if (data.type === 'swing_test_ack') {
         setMotionStatus(
           data.audioUnlocked
@@ -860,12 +928,10 @@
       if (ty) ty.style.left = (50 + beta * 1.0) + '%';
 
       // Stream tilt data to PC (throttled to ~20fps)
-      if (conn && conn.open) {
-        const now = Date.now();
-        if (!onOrientation._last || now - onOrientation._last > 50) {
-          onOrientation._last = now;
-          conn.send({ type: 'tilt', x: gamma, y: beta });
-        }
+      const now = Date.now();
+      if (!onOrientation._last || now - onOrientation._last > 50) {
+        onOrientation._last = now;
+        sendToPC({ type: 'tilt', x: gamma, y: beta });
       }
     }
 
@@ -881,7 +947,7 @@
     }
 
     function sendMove(dir) {
-      if (conn && conn.open) conn.send({ type: 'move', dir });
+      sendToPC({ type: 'move', dir });
     }
 
     // Touch zones: press left half = move left, right half = move right
@@ -928,10 +994,8 @@
       }
 
       // Tell PC to play swing sound and pass swing type/power
-      if (conn && conn.open) {
-        conn.send({ type: 'trigger_swing_sound' });
-        conn.send({ type: 'swing', power, swingType, dx: aX });
-      }
+      sendToPC({ type: 'trigger_swing_sound' });
+      sendToPC({ type: 'swing', power, swingType, dx: aX });
 
       animSwing('swung');
       vibrate([40, 20, 70]);
@@ -968,21 +1032,21 @@
       const el = document.getElementById('pb-' + mode);
       if (el) el.classList.add('active');
       // Notify PC immediately (even before play starts)
-      if (conn && conn.open) conn.send({ type: 'select_mode', mode });
+      sendToPC({ type: 'select_mode', mode });
     }
 
     function goToPlay() {
       // Send start to PC
-      if (conn && conn.open) conn.send({ type: 'start_game' });
+      sendToPC({ type: 'start_game' });
       // Send mode to PC before switching to play screen
-      if (conn && conn.open) conn.send({ type: 'select_mode', mode: selectedMode });
+      sendToPC({ type: 'select_mode', mode: selectedMode });
       document.getElementById('screen-test').classList.remove('active');
       document.getElementById('screen-play').classList.add('active');
       setupSwipeZone();
     }
 
     function quitPlay() {
-      if (conn && conn.open) conn.send({ type: 'quit_game' });
+      sendToPC({ type: 'quit_game' });
       document.getElementById('screen-play').classList.remove('active');
       document.getElementById('screen-test').classList.add('active');
     }
