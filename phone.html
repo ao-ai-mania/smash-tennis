@@ -267,7 +267,7 @@
       padding: 12px 16px;
       background: rgba(0, 0, 0, 0.5);
       backdrop-filter: blur(6px);
-      z-index: 10;
+      z-index: 40;
     }
 
     .play-brand {
@@ -279,14 +279,19 @@
     }
 
     .quit-btn-small {
-      background: transparent;
-      border: 1px solid rgba(255, 100, 100, 0.5);
-      color: rgba(255, 120, 120, 0.8);
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 0.75rem;
+      position: relative;
+      z-index: 45;
+      min-width: 68px;
+      min-height: 38px;
+      background: rgba(70, 5, 12, 0.78);
+      border: 1px solid rgba(255, 120, 120, 0.8);
+      color: #ffd5d5;
+      padding: 7px 12px;
+      border-radius: 9px;
+      font-size: 0.78rem;
       cursor: pointer;
       font-family: 'Noto Sans JP', sans-serif;
+      touch-action: manipulation;
     }
 
     /* Score area */
@@ -296,7 +301,7 @@
       left: 0;
       right: 0;
       text-align: center;
-      z-index: 10;
+      z-index: 25;
     }
 
     .play-score-num {
@@ -378,6 +383,24 @@
       transform: translateX(-50%);
       width: 200px;
       z-index: 10;
+    }
+
+    .move-zone {
+      position: absolute;
+      top: 52px;
+      bottom: 0;
+      width: 28%;
+      z-index: 12;
+      opacity: 0;
+      touch-action: pan-y;
+    }
+
+    #touch-zone-left {
+      left: 0;
+    }
+
+    #touch-zone-right {
+      right: 0;
     }
 
     .power-bar-label {
@@ -521,7 +544,7 @@
     <div class="test-title">🎾 素振りテスト</div>
     <div class="test-subtitle">
       スマホを振るとPCから音が鳴ります。<br>
-      ゲームを開始する前に動作を確認しましょう。
+      接続後は自動でラリーを開始します。
     </div>
 
     <div class="accel-display">
@@ -547,12 +570,8 @@
       </div>
     </div>
 
-    <button class="perm-btn" id="perm-btn" onclick="reqPermission()">
-      📡 センサーを有効化
-    </button>
-
-    <button class="test-ok-btn" onclick="goToPlay()">
-      ▶ プレイ開始
+    <button class="test-ok-btn" id="start-action-btn" onclick="startController()">
+      📡 センサーを許可してラリー開始
     </button>
 
     <div style="font-size:0.65rem;color:rgba(255,255,255,0.25);text-align:center;">
@@ -571,7 +590,7 @@
         <div class="cs-dot"></div>
         <span>接続中</span>
       </div>
-      <button class="quit-btn-small" onclick="quitPlay()">やめる</button>
+      <button class="quit-btn-small" id="phone-quit-btn" type="button" onclick="quitPlay(event)">やめる</button>
     </div>
 
     <div class="play-score-area">
@@ -592,15 +611,11 @@
     </div>
 
     <!-- TOUCH ZONES: left half / right half for movement -->
-    <div id="touch-zone-left" style="position:absolute;left:0;top:0;width:50%;height:100%;z-index:18;opacity:0;"
+    <div id="touch-zone-left" class="move-zone"
       ontouchstart="touchZonePress('left',event)" onclick="sendMove('left')">
     </div>
-    <div id="touch-zone-right" style="position:absolute;right:0;top:0;width:50%;height:100%;z-index:18;opacity:0;"
+    <div id="touch-zone-right" class="move-zone"
       ontouchstart="touchZonePress('right',event)" onclick="sendMove('right')">
-    </div>
-
-    <!-- Scroll zone overlaid for fwd/back (transparent but captures wheel) -->
-    <div id="scroll-zone" style="position:absolute;inset:0;z-index:17;" onwheel="onScrollMove(event)">
     </div>
 
     <!-- Visual hint arrows (bottom corners) -->
@@ -645,6 +660,9 @@
     let motionListenerAttached = false;
     let motionEventReceived = false;
     let motionWatchTimer;
+    let pcConnected = false;
+    let playStarted = false;
+    let swipeZoneReady = false;
 
     // ============================================================
     //  PEER INIT
@@ -749,7 +767,9 @@
     function onTVData(data) {
       if (data.type === 'controller_ack') {
         if (data.transport === 'relay') activeTransport = 'relay';
+        pcConnected = true;
         setConn('connected', `✓ PC接続完了${activeTransport === 'relay' ? '（中継）' : ''}`);
+        maybeAutoStart();
       } else if (data.type === 'swing_test_ack') {
         setMotionStatus(
           data.audioUnlocked
@@ -771,13 +791,21 @@
         updatePlayScore();
         // Return to swing test screen so player can change mode
         setTimeout(() => {
+          playStarted = false;
           document.getElementById('screen-play').classList.remove('active');
           document.getElementById('screen-test').classList.add('active');
+          const startBtn = document.getElementById('start-action-btn');
+          startBtn.style.display = 'block';
+          startBtn.textContent = '▶ もう一度ラリー';
         }, 800);
       } else if (data.type === 'show_menu') {
         // PC returned to lobby – show test screen on phone too
+        playStarted = false;
         document.getElementById('screen-play').classList.remove('active');
         document.getElementById('screen-test').classList.add('active');
+        const startBtn = document.getElementById('start-action-btn');
+        startBtn.style.display = 'block';
+        startBtn.textContent = '▶ ラリーを再開';
       }
     }
 
@@ -785,29 +813,29 @@
     //  MOTION
     // ============================================================
     function initMotion() {
-      const btn = document.getElementById('perm-btn');
+      const btn = document.getElementById('start-action-btn');
       if (!window.isSecureContext) {
         setMotionStatus('HTTPSで開くとセンサーを利用できます', 'error');
-        btn.style.display = 'none';
+        btn.textContent = '▶ タップ操作でラリー開始';
         return;
       }
       if (typeof DeviceMotionEvent === 'undefined') {
         setMotionStatus('このブラウザではセンサーを利用できません。SafariまたはChromeで開いてください', 'error');
         btn.style.display = 'block';
-        btn.disabled = true;
+        btn.textContent = '▶ タップ操作でラリー開始';
         return;
       }
 
       btn.style.display = 'block';
       if (typeof DeviceMotionEvent.requestPermission === 'function') {
-        setMotionStatus('下のボタンを押してセンサーを許可してください');
+        setMotionStatus('下のボタンを1回押すとラリーを開始します');
       } else {
         enableMotion();
       }
     }
 
     async function reqPermission() {
-      const btn = document.getElementById('perm-btn');
+      const btn = document.getElementById('start-action-btn');
       btn.disabled = true;
       setMotionStatus('センサーの許可を確認しています…');
 
@@ -827,6 +855,7 @@
           return;
         }
         enableMotion();
+        maybeAutoStart();
       } catch (error) {
         console.error(error);
         setMotionStatus('許可を取得できません。SafariまたはChromeで開き直してください', 'error');
@@ -844,8 +873,8 @@
       }
 
       setMotionStatus('センサー入力を待っています…');
-      const btn = document.getElementById('perm-btn');
-      btn.textContent = '📡 センサーを再試行';
+      const btn = document.getElementById('start-action-btn');
+      btn.textContent = '▶ ラリー開始';
       clearTimeout(motionWatchTimer);
       motionWatchTimer = setTimeout(() => {
         if (!motionEventReceived) {
@@ -853,6 +882,7 @@
           btn.style.display = 'block';
         }
       }, 2500);
+      maybeAutoStart();
     }
 
     function setMotionStatus(text, state = '') {
@@ -874,7 +904,7 @@
 
       motionEventReceived = true;
       clearTimeout(motionWatchTimer);
-      document.getElementById('perm-btn').style.display = 'none';
+      document.getElementById('start-action-btn').style.display = 'none';
 
       const a = hasGravity ? gravity : linear;
       const x = Number.isFinite(a.x) ? a.x : 0;
@@ -1026,6 +1056,24 @@
     // ============================================================
     let selectedMode = 'rally';
 
+    function startController() {
+      if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function' &&
+        !motionActive) {
+        reqPermission();
+        return;
+      }
+      goToPlay();
+    }
+
+    function maybeAutoStart() {
+      if (!pcConnected || playStarted) return;
+      if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function' &&
+        !motionActive) return;
+      goToPlay();
+    }
+
     function phoneSelectMode(mode) {
       selectedMode = mode;
       document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -1036,6 +1084,8 @@
     }
 
     function goToPlay() {
+      if (playStarted) return;
+      playStarted = true;
       // Send start to PC
       sendToPC({ type: 'start_game' });
       // Send mode to PC before switching to play screen
@@ -1045,16 +1095,23 @@
       setupSwipeZone();
     }
 
-    function quitPlay() {
+    function quitPlay(event) {
+      event?.preventDefault();
+      event?.stopPropagation();
+      playStarted = false;
       sendToPC({ type: 'quit_game' });
       document.getElementById('screen-play').classList.remove('active');
       document.getElementById('screen-test').classList.add('active');
+      document.getElementById('start-action-btn').style.display = 'block';
+      document.getElementById('start-action-btn').textContent = '▶ ラリーを再開';
     }
 
     // ============================================================
     //  SWIPE GESTURE CONTROLS (play screen)
     // ============================================================
     function setupSwipeZone() {
+      if (swipeZoneReady) return;
+      swipeZoneReady = true;
       const zone = document.getElementById('screen-play');
       let touchStartX = 0, touchStartY = 0;
       let lastSwipeTime = 0;
@@ -1066,6 +1123,7 @@
       }, { passive: true });
 
       zone.addEventListener('touchend', e => {
+        if (e.target.closest('.play-top, #swing-btn')) return;
         const t = e.changedTouches[0];
         const dx = t.clientX - touchStartX;
         const dy = t.clientY - touchStartY;
@@ -1083,6 +1141,8 @@
           sendMove(dy > 0 ? 'back' : 'fwd');
         }
       }, { passive: true });
+
+      zone.addEventListener('wheel', onScrollMove, { passive: false });
     }
 
     // ============================================================

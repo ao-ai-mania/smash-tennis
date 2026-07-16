@@ -238,24 +238,11 @@
       transform: scale(1.03);
     }
 
-    .audio-unlock-btn {
-      width: 100%;
-      padding: 9px 12px;
-      margin-bottom: 10px;
-      border: 1px solid rgba(0, 204, 255, 0.6);
-      border-radius: 8px;
-      background: rgba(0, 204, 255, 0.12);
-      color: #8be9ff;
-      font-family: 'Noto Sans JP', sans-serif;
-      font-weight: 700;
-      cursor: pointer;
-    }
-
-    .audio-unlock-btn.enabled {
-      border-color: rgba(110, 240, 160, 0.5);
-      background: rgba(110, 240, 160, 0.12);
-      color: #6ef0a0;
-      cursor: default;
+    #audio-status {
+      margin: -4px 0 10px;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 0.68rem;
+      text-align: center;
     }
 
     #lobby.swing-detected .connect-row {
@@ -315,6 +302,8 @@
       position: relative;
       width: 100vw;
       height: 100vh;
+      background: #07151f;
+      isolation: isolate;
     }
 
     canvas {
@@ -338,12 +327,13 @@
     }
 
     .hud-panel {
-      background: rgba(0, 0, 0, 0.5);
-      backdrop-filter: blur(6px);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 10px;
-      padding: 10px 16px;
+      background: linear-gradient(145deg, rgba(4, 18, 28, 0.82), rgba(8, 28, 36, 0.52));
+      backdrop-filter: blur(14px) saturate(1.25);
+      border: 1px solid rgba(160, 232, 255, 0.26);
+      border-radius: 14px;
+      padding: 11px 18px;
       font-family: 'Orbitron', monospace;
+      box-shadow: 0 14px 38px rgba(0, 0, 0, 0.3), inset 0 1px rgba(255, 255, 255, 0.1);
     }
 
     .hud-label {
@@ -400,16 +390,17 @@
       top: 18px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: linear-gradient(90deg, rgba(4, 18, 28, 0.78), rgba(9, 48, 54, 0.7));
+      border: 1px solid rgba(126, 238, 194, 0.35);
       border-radius: 20px;
       padding: 5px 16px;
       font-family: 'Orbitron', monospace;
       font-size: 0.6rem;
       letter-spacing: 0.2em;
-      color: var(--gold);
+      color: #d9fff0;
       pointer-events: none;
       z-index: 10;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
     }
 
     /* Center message */
@@ -695,9 +686,7 @@
             <span id="status-text">スマホで接続を待機中...</span>
           </div>
           <div id="swing-test-feedback">スマホを振ると、ここが緑色に光ります</div>
-          <button class="audio-unlock-btn" id="audio-unlock-btn" onclick="enableAudio()">
-            🔊 PCの音声を有効化
-          </button>
+          <div id="audio-status">音声は最初の画面操作で自動的に有効になります</div>
           <button class="start-btn" id="start-btn" onclick="startGame()">▶ ゲーム スタート</button>
           <div class="hint-text">上のQRコードをスマホで読み取って接続</div>
         </div>
@@ -833,7 +822,7 @@
     }
 
     async function enableAudio() {
-      const btn = document.getElementById('audio-unlock-btn');
+      const status = document.getElementById('audio-status');
       try {
         const ctx = getAudioCtx();
         if (ctx.state === 'suspended') await ctx.resume();
@@ -847,14 +836,18 @@
         osc.stop(ctx.currentTime + 0.02);
 
         audioUnlocked = true;
-        btn.textContent = '✓ PCの音声は有効です';
-        btn.classList.add('enabled');
-        btn.disabled = true;
+        if (status) status.textContent = '✓ PC音声準備完了';
+        document.removeEventListener('pointerdown', enableAudio);
+        document.removeEventListener('keydown', enableAudio);
       } catch (error) {
         console.error(error);
-        btn.textContent = '音声を有効にできませんでした。もう一度クリック';
+        if (status) status.textContent = '音声は次の画面操作で自動的に再試行します';
       }
     }
+
+    document.addEventListener('pointerdown', enableAudio, { passive: true });
+    document.addEventListener('keydown', enableAudio);
+    enableAudio().catch(() => { });
 
     function playHit() {
       const s = Math.random() > 0.5 ? SFX.hit1 : SFX.hit2;
@@ -923,6 +916,7 @@
     loadImg('bg', 'japan_bg.png');
     loadImg('ball', 'tennis_ball.png');
     loadImg('bg_riverbank', 'bg_riverbank.png');
+    loadImg('bg_riverbank_hd', 'bg_riverbank_hd.png');
     loadImg('bg_rooftop', 'bg_rooftop.png');
     loadImg('bg_wall', 'bg_wall.png');
     loadImg('char_opponent', 'char_opponent.png');
@@ -1063,7 +1057,7 @@
       const lobby = document.getElementById('lobby');
       feedback.textContent = audioUnlocked
         ? `✓ PCで素振りを受信しました（${swingTestCount}回）`
-        : `✓ PCで素振りを受信しました（${swingTestCount}回）—「PCの音声を有効化」を押してください`;
+        : `✓ PCで素振りを受信しました（${swingTestCount}回）— 音声は次の画面操作で有効になります`;
       feedback.classList.remove('detected');
       lobby.classList.remove('swing-detected');
       requestAnimationFrame(() => {
@@ -1102,6 +1096,7 @@
     let GS = {};
     let ball = {};
     let particles = [];
+    let ballTrail = [];
     let animId = null;
     let msgTimeout = null;
     let shotTypeTimeout = null;
@@ -1109,6 +1104,8 @@
     let sweetZoneActive = false;
     let swingReceived = false;
     let lastSwingType = 'forehand'; // forehand | slice | volley | smash | sliceserve
+    let impactFlash = 0;
+    let cameraShake = 0;
 
     // Opponent CPU position
     let cpuX = 0.5;
@@ -1136,6 +1133,9 @@
         grounded: false,
       };
       particles = [];
+      ballTrail = [];
+      impactFlash = 0;
+      cameraShake = 0;
       matchState = { playerPts: 0, cpuPts: 0, playerGames: 0, cpuGames: 0, set: 1 };
       lessonIdx = 0;
       lessonBallsDelivered = 0;
@@ -1154,7 +1154,8 @@
     //  GAME START
     // ============================================================
     function startGame() {
-      getAudioCtx(); // Unlock audio
+      if (GS.running && document.getElementById('game-container').style.display === 'block') return;
+      enableAudio().catch(() => { });
       document.getElementById('lobby').style.display = 'none';
       document.getElementById('game-container').style.display = 'block';
       document.getElementById('mode-badge').textContent = MODES[currentMode].label;
@@ -1204,6 +1205,7 @@
     // ============================================================
     function serve() {
       if (!GS.running) return;
+      ballTrail = [];
 
       if (currentMode === 'smash') {
         // In smash mode, ball starts ready for lob trigger
@@ -1429,6 +1431,7 @@
         scheduleCpuReturn(currentMode === 'wall' ? 350 : travelMs);
 
         playHit();
+        triggerImpact(power, swingType);
         spawnParticles(ball.x * C.width, ball.y * C.height, swingType);
         showShotType(swingType);
         showMsg(hitMsg(), '#f5c842');
@@ -1484,6 +1487,7 @@
         ball.grounded = false;
         ball.bounceT = 0;
         playHit();
+        triggerImpact(power, actualType);
         spawnParticles(ball.x * C.width, ball.y * C.height, actualType);
         showShotType(actualType);
         sendToController({ type: 'result', result: 'hit', score: GS.score });
@@ -1662,11 +1666,29 @@
     function exitGame() {
       GS.running = false;
       cancelAnimationFrame(animId);
+      clearTimeout(cpuReturnTimer);
       document.getElementById('gameover').classList.remove('show');
       document.getElementById('game-container').style.display = 'none';
       document.getElementById('lobby').style.display = 'flex';
       // Tell phone to go back to test/menu screen
       sendToController({ type: 'show_menu' });
+    }
+
+    function triggerImpact(power, swingType) {
+      const isPowerShot = swingType === 'smash' || swingType === 'sliceserve';
+      impactFlash = Math.min(1, 0.35 + power * 0.5 + (isPowerShot ? 0.25 : 0));
+      cameraShake = Math.min(13, 3 + power * 6 + (isPowerShot ? 4 : 0));
+    }
+
+    function drawImpactOverlay(W, H) {
+      if (impactFlash <= 0.01) return;
+      const glow = ctx.createRadialGradient(W * 0.5, H * 0.62, 0, W * 0.5, H * 0.62, W * 0.45);
+      glow.addColorStop(0, `rgba(255,255,230,${impactFlash * 0.55})`);
+      glow.addColorStop(0.28, `rgba(245,200,66,${impactFlash * 0.2})`);
+      glow.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W, H);
+      impactFlash *= 0.82;
     }
 
     // ============================================================
@@ -1704,6 +1726,11 @@
       ctx.clearRect(0, 0, C.width, C.height);
       const W = C.width, H = C.height;
 
+      ctx.save();
+      if (cameraShake > 0.1) {
+        ctx.translate((Math.random() - 0.5) * cameraShake, (Math.random() - 0.5) * cameraShake * 0.65);
+        cameraShake *= 0.76;
+      }
       drawScene(W, H);
 
       // CPU opponent follows the ball
@@ -1773,6 +1800,23 @@
         const bx = ball.x * W, by = dispY * H;
         const bs = Math.max(3, 5 + ball.z * 88);
 
+        if (Math.abs(ball.vz || 0) > 0.012 || ball.phase === 'bounce_back') {
+          ballTrail.unshift({ x: bx, y: by, r: bs, life: 0.75 });
+          if (ballTrail.length > 10) ballTrail.length = 10;
+        }
+        ballTrail = ballTrail.filter(t => t.life > 0.04);
+        ballTrail.forEach((t, index) => {
+          ctx.save();
+          ctx.globalCompositeOperation = 'screen';
+          ctx.globalAlpha = t.life * (1 - index / 12) * 0.35;
+          ctx.fillStyle = lastSwingType === 'slice' ? '#62dcff' : '#fff3a0';
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, Math.max(1, t.r * t.life * 0.72), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          t.life *= 0.72;
+        });
+
         // Shadow
         const shadowY = H * 0.79;
         ctx.save();
@@ -1837,6 +1881,8 @@
         ctx.fill(); ctx.restore();
       });
 
+      ctx.restore();
+      drawImpactOverlay(W, H);
       drawRacketPanel();
       animId = requestAnimationFrame(loop);
     }
@@ -1854,18 +1900,19 @@
       // helper function for parallax background
       function drawModeBackground(imgKey, isWall = false) {
         if (IMG[imgKey] && IMG[imgKey].complete && IMG[imgKey].naturalWidth > 0) {
+          const img = IMG[imgKey];
           const slide = isWall ? 0 : camX * 0.7;
-          const oversize = isWall ? 0 : 0.06;
-          ctx.drawImage(IMG[imgKey],
-            -W * oversize + slide, -H * oversize,
-            W * (1 + oversize * 2), H * (1 + oversize * 2)
-          );
+          const oversize = isWall ? 1 : 1.08;
+          const scale = Math.max(W / img.naturalWidth, H / img.naturalHeight) * oversize;
+          const drawW = img.naturalWidth * scale;
+          const drawH = img.naturalHeight * scale;
+          ctx.drawImage(img, (W - drawW) / 2 + slide, (H - drawH) / 2, drawW, drawH);
           if (!isWall) {
-            const overlay = ctx.createLinearGradient(0, H * 0.4, 0, H);
+            const overlay = ctx.createLinearGradient(0, H * 0.34, 0, H);
             overlay.addColorStop(0, 'rgba(0,0,0,0)');
-            overlay.addColorStop(1, 'rgba(0,0,0,0.55)');
+            overlay.addColorStop(1, 'rgba(0,15,20,0.38)');
             ctx.fillStyle = overlay;
-            ctx.fillRect(0, H * 0.4, W, H * 0.6);
+            ctx.fillRect(0, H * 0.34, W, H * 0.66);
           }
           return true;
         }
@@ -1921,7 +1968,7 @@
       } else {
         // ── OUTDOOR MODES ──
         let bgKey = 'bg'; // fallback to initial japan_bg.png
-        if (currentMode === 'rally') bgKey = 'bg_riverbank';
+        if (currentMode === 'rally') bgKey = 'bg_riverbank_hd';
         if (currentMode === 'lesson' || currentMode === 'match') bgKey = 'bg_rooftop';
 
         if (!drawModeBackground(bgKey)) {
@@ -1935,73 +1982,97 @@
       // Court overlay (perspective lines) – skip in wall mode
       if (currentMode !== 'wall') {
         const vp = { x: W * 0.5, y: H * 0.50 };
+        const photoCourt = currentMode === 'rally' &&
+          IMG.bg_riverbank_hd?.complete && IMG.bg_riverbank_hd.naturalWidth > 0;
         ctx.save();
-        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-        ctx.lineWidth = 1.5;
+        const netY = photoCourt ? H * 0.59 : H * 0.645;
 
-        // Sidelines
-        [[0.05, 0.95], [0.14, 0.86], [0.24, 0.76]].forEach(([l, r]) => {
-          ctx.globalAlpha = 0.35;
-          ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(W * l, H); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(W * r, H); ctx.stroke();
-        });
+        if (!photoCourt) {
+          ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+          ctx.lineWidth = 1.5;
 
-        // Horizontal court lines
-        for (let d = 0; d < 9; d++) {
-          const t = (d + 1) / 10;
-          const y = vp.y + (H - vp.y) * (t * t * 0.88 + t * 0.12);
-          const spread = W * 0.44 * t;
-          ctx.globalAlpha = 0.12 + t * 0.25;
-          ctx.beginPath(); ctx.moveTo(vp.x - spread, y); ctx.lineTo(vp.x + spread, y); ctx.stroke();
-        }
+          [[0.05, 0.95], [0.14, 0.86], [0.24, 0.76]].forEach(([l, r]) => {
+            ctx.globalAlpha = 0.35;
+            ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(W * l, H); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(W * r, H); ctx.stroke();
+          });
 
-        // Center line
-        ctx.globalAlpha = 0.18;
-        ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(vp.x, H); ctx.stroke();
+          for (let d = 0; d < 9; d++) {
+            const t = (d + 1) / 10;
+            const y = vp.y + (H - vp.y) * (t * t * 0.88 + t * 0.12);
+            const spread = W * 0.44 * t;
+            ctx.globalAlpha = 0.12 + t * 0.25;
+            ctx.beginPath(); ctx.moveTo(vp.x - spread, y); ctx.lineTo(vp.x + spread, y); ctx.stroke();
+          }
 
-        // Service box cross
-        {
+          ctx.globalAlpha = 0.18;
+          ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(vp.x, H); ctx.stroke();
+
           const sy = vp.y + (H - vp.y) * 0.35;
           const spread = W * 0.18;
           ctx.globalAlpha = 0.22;
           ctx.beginPath(); ctx.moveTo(vp.x - spread, sy); ctx.lineTo(vp.x + spread, sy); ctx.stroke();
-        }
 
-        // Net
-        ctx.globalAlpha = 1;
-        const netY = H * 0.645;
-        const netW = W * 0.32;
-        ctx.shadowColor = 'rgba(255,255,255,0.6)'; ctx.shadowBlur = 10;
-        ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(vp.x - netW, netY); ctx.lineTo(vp.x + netW, netY); ctx.stroke();
-        ctx.shadowBlur = 0;
+          ctx.globalAlpha = 1;
+          const netW = W * 0.32;
+          ctx.shadowColor = 'rgba(255,255,255,0.6)'; ctx.shadowBlur = 10;
+          ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.moveTo(vp.x - netW, netY); ctx.lineTo(vp.x + netW, netY); ctx.stroke();
+          ctx.shadowBlur = 0;
 
-        // Net mesh
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 0.5;
-        const nH = 22;
-        for (let i = 0; i <= 20; i++) {
-          const nx = vp.x - netW + (netW * 2) * (i / 20);
-          ctx.beginPath(); ctx.moveTo(nx, netY); ctx.lineTo(nx, netY + nH); ctx.stroke();
-        }
-        for (let i = 0; i <= 4; i++) {
-          ctx.beginPath(); ctx.moveTo(vp.x - netW, netY + nH * i / 4); ctx.lineTo(vp.x + netW, netY + nH * i / 4); ctx.stroke();
-        }
+          ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 0.5;
+          const nH = 22;
+          for (let i = 0; i <= 20; i++) {
+            const nx = vp.x - netW + (netW * 2) * (i / 20);
+            ctx.beginPath(); ctx.moveTo(nx, netY); ctx.lineTo(nx, netY + nH); ctx.stroke();
+          }
+          for (let i = 0; i <= 4; i++) {
+            ctx.beginPath(); ctx.moveTo(vp.x - netW, netY + nH * i / 4); ctx.lineTo(vp.x + netW, netY + nH * i / 4); ctx.stroke();
+          }
 
-        // Net posts
-        ctx.strokeStyle = 'rgba(200,150,80,0.9)'; ctx.lineWidth = 5;
-        ctx.beginPath(); ctx.moveTo(vp.x - netW, netY - 8); ctx.lineTo(vp.x - netW, netY + nH + 6); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(vp.x + netW, netY - 8); ctx.lineTo(vp.x + netW, netY + nH + 6); ctx.stroke();
+          ctx.strokeStyle = 'rgba(200,150,80,0.9)'; ctx.lineWidth = 5;
+          ctx.beginPath(); ctx.moveTo(vp.x - netW, netY - 8); ctx.lineTo(vp.x - netW, netY + nH + 6); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(vp.x + netW, netY - 8); ctx.lineTo(vp.x + netW, netY + nH + 6); ctx.stroke();
+        } else {
+          const sunGlow = ctx.createRadialGradient(W * 0.82, H * 0.08, 0, W * 0.82, H * 0.08, W * 0.24);
+          sunGlow.addColorStop(0, 'rgba(255,250,210,0.26)');
+          sunGlow.addColorStop(0.35, 'rgba(255,220,130,0.08)');
+          sunGlow.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = sunGlow;
+          ctx.fillRect(0, 0, W, H * 0.58);
+
+          const now = performance.now() * 0.0002;
+          for (let i = 0; i < 28; i++) {
+            const x = ((i * 137.5 + now * (18 + i % 7)) % 1000) / 1000 * W;
+            const y = H * (0.18 + ((i * 73) % 420) / 1000);
+            const radius = 0.7 + (i % 4) * 0.45;
+            ctx.globalAlpha = 0.08 + (i % 5) * 0.025;
+            ctx.fillStyle = '#fff6c8';
+            ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
 
         // Draw Characters behind net
         const drawChar = (img, cx, cy, cWidth, cHeight, alpha = 1) => {
           if (img && img.complete && img.naturalWidth > 0) {
             ctx.save();
+            ctx.globalAlpha = alpha * 0.32;
+            ctx.fillStyle = '#061820';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy - 2, cWidth * 0.22, cHeight * 0.055, 0, 0, Math.PI * 2);
+            ctx.fill();
             ctx.globalAlpha = alpha;
+            ctx.globalCompositeOperation = 'multiply';
             ctx.drawImage(img, cx - cWidth / 2, cy - cHeight, cWidth, cHeight);
             ctx.restore();
           }
         };
+        const charSize = Math.min(Math.max(H * (photoCourt ? 0.17 : 0.21), 105), 190);
+        const charW = charSize;
+        const charH = charSize;
+        const charBaseY = photoCourt ? H * 0.575 : netY - 5;
 
         if (currentMode === 'match' || currentMode === 'rally') {
           // CPU opponent follows ball horizontally
@@ -2023,8 +2094,17 @@
       // Vignette
       const vig = ctx.createRadialGradient(W / 2, H / 2, W * 0.25, W / 2, H / 2, W * 0.8);
       vig.addColorStop(0, 'transparent');
-      vig.addColorStop(1, 'rgba(0,0,0,0.4)');
+      vig.addColorStop(0.72, 'rgba(0,10,18,0.04)');
+      vig.addColorStop(1, 'rgba(0,8,14,0.52)');
       ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+
+      if (currentMode === 'rally') {
+        const foreground = ctx.createLinearGradient(0, H * 0.72, 0, H);
+        foreground.addColorStop(0, 'rgba(1,14,20,0)');
+        foreground.addColorStop(1, 'rgba(1,12,18,0.36)');
+        ctx.fillStyle = foreground;
+        ctx.fillRect(0, H * 0.72, W, H * 0.28);
+      }
 
       ctx.restore(); // end zoom transform
     }
@@ -2036,31 +2116,96 @@
       rctx.clearRect(0, 0, RC.width, RC.height);
       const W = RC.width, H = RC.height;
 
-      if (!drawRacketPanel._img) {
-        drawRacketPanel._img = new Image();
-        drawRacketPanel._img.src = 'racket.png';
-      }
-      const img = drawRacketPanel._img;
-
       const tiltAngle = racketTiltX * 0.035;
       const tiltRise = Math.min(Math.max(racketTiltY * 1.5, -20), 20);
       const cx = W * 0.5 + racketTiltX * 6;
-      // baseY: grip sits at canvas bottom (H=300), racket head pokes 280px upward
       const baseY = H - 5 + tiltRise;
 
       rctx.save();
       rctx.translate(cx, baseY);
       rctx.rotate(tiltAngle);
 
-      const rW = 220, rH = 280;
-      if (img.complete && img.naturalWidth > 0) {
-        rctx.drawImage(img, -rW / 2, -rH, rW, rH);
-      } else {
-        rctx.strokeStyle = 'rgba(255,255,255,0.6)'; rctx.lineWidth = 3;
-        rctx.beginPath(); rctx.ellipse(0, -110, 40, 55, 0, 0, Math.PI * 2); rctx.stroke();
-        rctx.strokeStyle = '#5a3010'; rctx.lineWidth = 10;
-        rctx.beginPath(); rctx.moveTo(0, -60); rctx.lineTo(0, 10); rctx.stroke();
+      // First-person racket drawn directly on the transparent overlay.
+      // This avoids the rectangular photo background of the old asset.
+      rctx.shadowColor = 'rgba(0,0,0,0.55)';
+      rctx.shadowBlur = 18;
+      rctx.shadowOffsetY = 10;
+
+      const grip = rctx.createLinearGradient(-13, -58, 13, 18);
+      grip.addColorStop(0, '#15191c');
+      grip.addColorStop(0.48, '#42484c');
+      grip.addColorStop(1, '#0a0d0f');
+      rctx.strokeStyle = grip;
+      rctx.lineWidth = 24;
+      rctx.lineCap = 'round';
+      rctx.beginPath();
+      rctx.moveTo(0, 12);
+      rctx.lineTo(0, -74);
+      rctx.stroke();
+
+      rctx.shadowBlur = 0;
+      rctx.strokeStyle = 'rgba(232,245,250,0.34)';
+      rctx.lineWidth = 2;
+      for (let y = -48; y < 12; y += 12) {
+        rctx.beginPath();
+        rctx.moveTo(-11, y);
+        rctx.lineTo(11, y - 8);
+        rctx.stroke();
       }
+
+      const throat = rctx.createLinearGradient(-28, -132, 28, -74);
+      throat.addColorStop(0, '#15242a');
+      throat.addColorStop(0.5, '#5be2d5');
+      throat.addColorStop(1, '#102127');
+      rctx.strokeStyle = throat;
+      rctx.lineWidth = 10;
+      rctx.beginPath();
+      rctx.moveTo(0, -76);
+      rctx.lineTo(-27, -127);
+      rctx.moveTo(0, -76);
+      rctx.lineTo(27, -127);
+      rctx.stroke();
+
+      rctx.shadowColor = 'rgba(0,0,0,0.48)';
+      rctx.shadowBlur = 16;
+      rctx.shadowOffsetY = 7;
+      rctx.strokeStyle = '#101a20';
+      rctx.lineWidth = 17;
+      rctx.beginPath();
+      rctx.ellipse(0, -184, 67, 91, 0, 0, Math.PI * 2);
+      rctx.stroke();
+      rctx.shadowBlur = 0;
+      rctx.strokeStyle = '#52dacb';
+      rctx.lineWidth = 7;
+      rctx.beginPath();
+      rctx.ellipse(0, -184, 67, 91, 0, 0, Math.PI * 2);
+      rctx.stroke();
+      rctx.strokeStyle = 'rgba(219,255,250,0.72)';
+      rctx.lineWidth = 1.2;
+      for (let x = -48; x <= 48; x += 12) {
+        const edge = 91 * Math.sqrt(Math.max(0, 1 - (x * x) / (67 * 67)));
+        rctx.beginPath();
+        rctx.moveTo(x, -184 - edge);
+        rctx.lineTo(x, -184 + edge);
+        rctx.stroke();
+      }
+      for (let y = -256; y <= -112; y += 12) {
+        const dy = y + 184;
+        const edge = 67 * Math.sqrt(Math.max(0, 1 - (dy * dy) / (91 * 91)));
+        rctx.beginPath();
+        rctx.moveTo(-edge, y);
+        rctx.lineTo(edge, y);
+        rctx.stroke();
+      }
+
+      // A subtle hand silhouette keeps the first-person perspective grounded.
+      rctx.fillStyle = '#d5976d';
+      rctx.shadowColor = 'rgba(0,0,0,0.35)';
+      rctx.shadowBlur = 12;
+      rctx.beginPath();
+      rctx.ellipse(-2, 18, 31, 26, -0.12, 0, Math.PI * 2);
+      rctx.fill();
+      rctx.shadowBlur = 0;
 
       if (sweetZoneActive) {
         rctx.globalAlpha = 0.4 + Math.sin(Date.now() * 0.015) * 0.2;
