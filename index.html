@@ -7,6 +7,7 @@
   <title>SMASH TENNIS – Japan Court</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.15.2/dist/mqtt.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Orbitron:wght@400;700;900&display=swap');
 
@@ -933,9 +934,20 @@
     //  PEER SETUP
     // ============================================================
     let peer, conn, myPeerId = '';
+    let relayClient, relayConnected = false, controllerTransport = '';
+    const roomId = 'smash-' + (
+      crypto.randomUUID?.() || Math.random().toString(36).slice(2) + Date.now().toString(36)
+    );
+    const relayTopicFromPhone = `smash-tennis/${roomId}/phone-to-pc`;
+    const relayTopicToPhone = `smash-tennis/${roomId}/pc-to-phone`;
 
     function initPeer() {
-      peer = new Peer(undefined, {
+      myPeerId = roomId;
+      document.getElementById('peer-id-display').textContent = roomId;
+      generateQR(roomId);
+      initRelay();
+
+      peer = new Peer(roomId, {
         host: '0.peerjs.com', port: 443, secure: true,
         config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
       });
@@ -946,25 +958,84 @@
       });
       peer.on('connection', c => {
         conn = c;
-        conn.on('data', onControllerData);
+        conn.on('data', data => {
+          controllerTransport = 'peer';
+          onControllerData(data);
+        });
         conn.on('open', () => {
-          setStatus(true);
+          controllerTransport = 'peer';
+          setStatus(true, '直接');
           document.getElementById('start-btn').classList.add('active');
         });
         conn.on('close', () => setStatus(false));
       });
-      peer.on('error', () => {
-        const fallbackId = Math.random().toString(36).slice(2, 8).toUpperCase();
-        document.getElementById('peer-id-display').textContent = fallbackId + ' (オフライン)';
-        document.getElementById('start-btn').classList.add('active');
+      peer.on('error', error => {
+        console.warn('PeerJS error; relay remains available', error);
+        if (!relayConnected) {
+          document.getElementById('status-text').textContent = '接続経路を再試行中...';
+        }
       });
+    }
+
+    function initRelay() {
+      if (typeof mqtt === 'undefined') {
+        console.warn('MQTT relay library is unavailable');
+        return;
+      }
+
+      relayClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+        clientId: `smash-pc-${roomId}-${Math.random().toString(36).slice(2, 8)}`,
+        clean: true,
+        connectTimeout: 10000,
+        reconnectPeriod: 2000,
+        keepalive: 30
+      });
+
+      relayClient.on('connect', () => {
+        relayConnected = true;
+        relayClient.subscribe(relayTopicFromPhone, { qos: 0 });
+      });
+      relayClient.on('reconnect', () => {
+        relayConnected = false;
+      });
+      relayClient.on('close', () => {
+        relayConnected = false;
+      });
+      relayClient.on('error', error => {
+        console.warn('Relay error', error);
+      });
+      relayClient.on('message', (topic, payload) => {
+        if (topic !== relayTopicFromPhone) return;
+        try {
+          controllerTransport = 'relay';
+          onControllerData(JSON.parse(payload.toString()));
+        } catch (error) {
+          console.warn('Invalid relay message', error);
+        }
+      });
+    }
+
+    function sendToController(data) {
+      if (controllerTransport === 'peer' && conn && conn.open) {
+        conn.send(data);
+        return true;
+      }
+      if (relayConnected && relayClient) {
+        relayClient.publish(relayTopicToPhone, JSON.stringify(data), { qos: 0 });
+        return true;
+      }
+      if (conn && conn.open) {
+        conn.send(data);
+        return true;
+      }
+      return false;
     }
 
     function generateQR(peerId) {
       let base = location.pathname;
       if (base.endsWith('index.html')) base = base.replace('index.html', '');
       if (!base.endsWith('/')) base += '/';
-      const url = `${location.origin}${base}phone.html?peer=${peerId}&v=20260716-pc-feedback`;
+      const url = `${location.origin}${base}phone.html?room=${encodeURIComponent(peerId)}&v=20260716-relay`;
       document.getElementById('qr-code').innerHTML = '';
       new QRCode(document.getElementById('qr-code'), {
         text: url, width: 130, height: 130,
@@ -973,12 +1044,12 @@
       });
     }
 
-    function setStatus(connected) {
+    function setStatus(connected, transport = '') {
       const bar = document.getElementById('status-bar');
       const txt = document.getElementById('status-text');
       if (connected) {
         bar.className = 'status-pill connected';
-        txt.textContent = '✓ コントローラー接続完了';
+        txt.textContent = `✓ コントローラー接続完了${transport ? `（${transport}）` : ''}`;
       } else {
         bar.className = 'status-pill waiting';
         txt.textContent = 'スマホで接続を待機中...';
@@ -1178,17 +1249,17 @@
     //  CONTROLLER INPUT
     // ============================================================
     function onControllerData(data) {
-      setStatus(true);
+      setStatus(true, controllerTransport === 'relay' ? '中継' : '直接');
       document.getElementById('start-btn').classList.add('active');
 
       if (data.type === 'controller_ready') {
-        if (conn && conn.open) conn.send({ type: 'controller_ack', audioUnlocked });
+        sendToController({ type: 'controller_ack', audioUnlocked, transport: controllerTransport });
       }
 
       if (data.type === 'trigger_swing_sound') {
         showLobbySwingFeedback();
         playSwing();
-        if (conn && conn.open) conn.send({ type: 'swing_test_ack', audioUnlocked });
+        sendToController({ type: 'swing_test_ack', audioUnlocked });
       }
 
       if (data.type === 'swing' && GS.running) {
@@ -1364,7 +1435,7 @@
         updateHUD();
 
         if (currentMode === 'match') awardMatchPoint('player');
-        if (conn) conn.send({ type: 'result', result: 'hit', score: GS.score });
+        sendToController({ type: 'result', result: 'hit', score: GS.score });
         if (GS.streak % 5 === 0) setTimeout(playCheer, 300);
 
       } else if (ball.z > 0.18) {
@@ -1415,7 +1486,7 @@
         playHit();
         spawnParticles(ball.x * C.width, ball.y * C.height, actualType);
         showShotType(actualType);
-        if (conn) conn.send({ type: 'result', result: 'hit', score: GS.score });
+        sendToController({ type: 'result', result: 'hit', score: GS.score });
         // After hitting far wall / ground, bounce back at high speed
         setTimeout(() => {
           if (!GS.running) return;
@@ -1451,7 +1522,7 @@
       playMiss();
       showMsg('ミス', '#e03030');
       updateHUD();
-      if (conn) conn.send({ type: 'result', result: 'miss' });
+      sendToController({ type: 'result', result: 'miss' });
 
       if (currentMode === 'match') awardMatchPoint('cpu');
 
@@ -1577,7 +1648,7 @@
       document.getElementById('go-score').innerHTML =
         `SCORE: <strong>${GS.score}</strong> &nbsp;|&nbsp; BEST RALLY: <strong>${GS.bestRally}</strong>`;
       document.getElementById('gameover').classList.add('show');
-      if (conn) conn.send({ type: 'gameover', score: GS.score });
+      sendToController({ type: 'gameover', score: GS.score });
     }
 
     function restartGame() {
@@ -1595,7 +1666,7 @@
       document.getElementById('game-container').style.display = 'none';
       document.getElementById('lobby').style.display = 'flex';
       // Tell phone to go back to test/menu screen
-      if (conn) conn.send({ type: 'show_menu' });
+      sendToController({ type: 'show_menu' });
     }
 
     // ============================================================
